@@ -4,6 +4,21 @@ import { Layers, Lock, Mail, User, ArrowRight, AlertCircle, ExternalLink } from 
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
+interface LoginCustomization {
+  title?: string;
+  subtitle?: string;
+  badgeText?: string;
+  logoUrl?: string;
+  bgImageUrl?: string;
+  bgBlur?: number;
+  bgDarkness?: number;
+  glowColor?: string;
+  accentColor?: string;
+  buttonText?: string;
+  helpText?: string;
+  showBackLink?: boolean;
+}
+
 export const ProjectUserLogin: React.FC = () => {
   const { prefix, slug } = useParams<{ prefix?: string; slug?: string }>();
   const effectiveSlug = slug || prefix;
@@ -12,6 +27,7 @@ export const ProjectUserLogin: React.FC = () => {
 
   const [projectTitle, setProjectTitle] = useState<string>('');
   const [projectPrefix, setProjectPrefix] = useState<string>(prefix || 'sitio');
+  const [loginSettings, setLoginSettings] = useState<LoginCustomization | null>(null);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,9 +41,15 @@ export const ProjectUserLogin: React.FC = () => {
       if (!effectiveSlug) return;
       try {
         const res = await api.get(`/projects/public/${effectiveSlug}`);
-        setProjectTitle(res.data.project.title);
-        if (res.data.project.routePrefix) {
-          setProjectPrefix(res.data.project.routePrefix);
+        const p = res.data.project;
+        setProjectTitle(p.title);
+        if (p.routePrefix) {
+          setProjectPrefix(p.routePrefix);
+        }
+        if (p.settings?.loginSettings) {
+          setLoginSettings(p.settings.loginSettings);
+        } else if (p.settings?.coverImage) {
+          setLoginSettings({ logoUrl: p.settings.coverImage });
         }
       } catch {
         setError(`El proyecto '${effectiveSlug}' no fue encontrado.`);
@@ -71,32 +93,86 @@ export const ProjectUserLogin: React.FC = () => {
     );
   }
 
+  // Resolved dynamic values with sensible fallbacks
+  const displayTitle = loginSettings?.title || projectTitle || effectiveSlug;
+  const displaySubtitle = loginSettings?.subtitle ?? (isRegisterMode ? 'Crea tu usuario para este sitio' : 'Accede al panel del sitio');
+  const badgeText = loginSettings?.badgeText || 'Acceso Seguro';
+  const logoUrl = loginSettings?.logoUrl;
+  const bgImageUrl = loginSettings?.bgImageUrl;
+  const bgBlur = typeof loginSettings?.bgBlur === 'number' ? loginSettings.bgBlur : 8;
+  const bgDarkness = typeof loginSettings?.bgDarkness === 'number' ? loginSettings.bgDarkness : 65;
+  const glowColor = loginSettings?.glowColor || '#10b981';
+  const accentColor = loginSettings?.accentColor || '#059669';
+  const buttonText = loginSettings?.buttonText || 'Iniciar Sesión';
+  const helpText = loginSettings?.helpText;
+  const showBackLink = loginSettings?.showBackLink !== undefined ? loginSettings.showBackLink : true;
+
   return (
-    <div className="min-h-screen bg-black flex flex-col justify-center items-center px-4 relative overflow-hidden text-[#f5f5f7]">
-      {/* Ambient background blur */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[500px] bg-emerald-600/10 rounded-full blur-[140px] pointer-events-none" />
+    <div className="min-h-screen bg-black flex flex-col justify-center items-center px-4 relative overflow-hidden text-[#f5f5f7] selection:bg-blue-500/30">
+      {/* Dynamic full-screen background image */}
+      {bgImageUrl && (
+        <div
+          className="absolute inset-0 bg-cover bg-center transition-all duration-700"
+          style={{
+            backgroundImage: `url(${bgImageUrl})`,
+            filter: `blur(${bgBlur}px)`,
+            transform: 'scale(1.08)',
+          }}
+        />
+      )}
+
+      {/* Dynamic dark filter overlay */}
+      <div
+        className="absolute inset-0 bg-black transition-opacity duration-300"
+        style={{ opacity: bgImageUrl ? bgDarkness / 100 : 0.8 }}
+      />
+
+      {/* Dynamic ambient background glow */}
+      <div
+        className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[400px] rounded-full blur-[60px] pointer-events-none opacity-25 transition-all duration-300"
+        style={{ backgroundColor: glowColor }}
+      />
 
       <div className="w-full max-w-[420px] z-10">
         {/* Header Branding */}
         <div className="text-center mb-8 flex flex-col items-center">
-          <div className="w-13 h-13 rounded-2xl bg-gradient-to-b from-emerald-600/30 to-emerald-950/80 border border-emerald-500/20 flex items-center justify-center shadow-2xl mb-4">
-            <Layers className="w-6 h-6 text-emerald-400" />
+          <div
+            className="w-14 h-14 rounded-2xl border flex items-center justify-center shadow-2xl mb-4 overflow-hidden"
+            style={{
+              backgroundColor: `${accentColor}20`,
+              borderColor: `${accentColor}40`,
+            }}
+          >
+            {logoUrl ? (
+              <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
+            ) : (
+              <Layers className="w-7 h-7" style={{ color: accentColor }} />
+            )}
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">
-            {projectTitle || effectiveSlug}
-          </h1>
-          <p className="text-[13px] text-[#86868b] mt-1 font-normal">
-            {isRegisterMode ? 'Crea tu usuario para este sitio' : 'Accede al panel del sitio'}
-          </p>
-          <div className="mt-2.5">
-            <span className="text-[11px] bg-white/[0.05] text-[#86868b] px-3 py-1 rounded-full border border-white/[0.08] font-mono">
-              /{projectPrefix}/{effectiveSlug}
+
+          {badgeText && (
+            <span
+              className="text-[10px] font-semibold px-3 py-1 rounded-full border mb-2.5 uppercase tracking-wider shadow-xs"
+              style={{
+                backgroundColor: `${accentColor}15`,
+                borderColor: `${accentColor}30`,
+                color: accentColor,
+              }}
+            >
+              {badgeText}
             </span>
-          </div>
+          )}
+
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">
+            {displayTitle}
+          </h1>
+          <p className="text-[13px] text-[#86868b] mt-1 font-normal max-w-xs text-center">
+            {displaySubtitle}
+          </p>
         </div>
 
         {/* Segmented Control */}
-        <div className="bg-zinc-900/80 p-1 rounded-full border border-white/10 flex mb-5 backdrop-blur-xl">
+        <div className="bg-zinc-900/90 p-1 rounded-full border border-white/10 flex mb-5">
           <button
             type="button"
             onClick={() => {
@@ -128,7 +204,7 @@ export const ProjectUserLogin: React.FC = () => {
         </div>
 
         {/* Card */}
-        <div className="apple-glass rounded-3xl p-8">
+        <div className="apple-glass rounded-3xl p-8 shadow-2xl border border-white/15">
           {error && (
             <div className="mb-5 p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2.5">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -193,27 +269,39 @@ export const ProjectUserLogin: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="apple-button-primary w-full mt-3 font-medium py-3 rounded-2xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-sm shadow-md"
+              className="w-full mt-3 font-medium py-3 rounded-2xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-sm shadow-lg transition-all"
+              style={{
+                backgroundColor: accentColor,
+                color: accentColor === '#ffffff' ? '#000000' : '#ffffff',
+              }}
             >
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
-                  <span>{isRegisterMode ? 'Registrar Usuario' : 'Acceder'}</span>
+                  <span>{isRegisterMode ? 'Registrar Usuario' : buttonText}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-white/[0.08] text-center">
-            <Link
-              to={`/${projectPrefix}/${effectiveSlug}`}
-              className="text-xs text-[#86868b] hover:text-white inline-flex items-center gap-1.5 transition-colors"
-            >
-              <span>Ver sitio público</span>
-              <ExternalLink className="w-3 h-3" />
-            </Link>
+          {/* Help text & Back link footer */}
+          <div className="mt-6 pt-5 border-t border-white/[0.08] text-center space-y-2">
+            {helpText && (
+              <p className="text-xs text-[#86868b]">{helpText}</p>
+            )}
+            {showBackLink && (
+              <div>
+                <Link
+                  to={`/${projectPrefix}/${effectiveSlug}`}
+                  className="text-xs text-zinc-400 hover:text-white inline-flex items-center gap-1.5 transition-colors"
+                >
+                  <span>Ver sitio público</span>
+                  <ExternalLink className="w-3 h-3" />
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </div>
