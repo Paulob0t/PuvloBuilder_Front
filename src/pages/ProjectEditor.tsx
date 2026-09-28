@@ -3,21 +3,17 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft,
   Save,
-  ExternalLink,
   Plus,
   Trash2,
   ChevronUp,
   ChevronDown,
   Image as ImageIcon,
   LayoutGrid,
-  Sparkles,
   Sliders,
   Upload,
   Layers,
-  CheckCircle2,
   FolderTree,
   Eye,
-  Lock,
 } from 'lucide-react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';

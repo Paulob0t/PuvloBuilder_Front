@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Layers, ArrowRight, Lock, UserCheck, Sparkles, ExternalLink } from 'lucide-react';
+import { Layers, ArrowRight, Lock, UserCheck, Sparkles } from 'lucide-react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
@@ -104,7 +104,7 @@ export const ProjectSiteView: React.FC = () => {
           <div className="flex items-center gap-3">
             {project.authEnabled && (
               <>
-                {projectUser && projectUser.projectSlug === project.slug ? (
+                {projectUser && (projectUser.project?.slug === project.slug || projectUser.projectId === project.id) ? (
                   <div className="flex items-center gap-2.5 bg-white/[0.06] border border-white/10 rounded-full px-3.5 py-1.5 text-xs">
                     <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
                     <span className="text-zinc-300 font-medium">{projectUser.name}</span>
