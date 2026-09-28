@@ -164,109 +164,226 @@ export const ProjectSiteView: React.FC = () => {
                 </div>
               )}
 
-              {/* 2. CANVAS DRAG & DROP MODULAR GRID */}
+              {/* 2. CANVAS DRAG & DROP MODULAR GRID (HYBRID: FREESTYLE / GRID) */}
               {block.type === 'CANVAS_GRID' && Array.isArray(block.content.items) && (
-                <div
-                  className="grid w-full transition-all duration-300"
-                  style={{
-                    gridTemplateColumns: `repeat(${block.content.columns || 3}, minmax(0, 1fr))`,
-                    gap: `${block.content.gap || 16}px`,
-                  }}
-                >
-                  {block.content.items.map((item: any, idx: number) => {
-                    const columnsCount = block.content.columns || 3;
-                    const effectiveColSpan = Math.min(item.colSpan || 1, columnsCount);
-                    const effectiveRowSpan = item.rowSpan || 1;
+                <>
+                  {(block.content.mode || 'freestyle') === 'freestyle' ? (
+                    /* FREESTYLE FREEFORM CANVAS VIEW */
+                    <div
+                      className="w-full relative rounded-3xl overflow-hidden shadow-2xl transition-all"
+                      style={{
+                        minHeight: `${block.content.canvasHeight || 580}px`,
+                      }}
+                    >
+                      {block.content.items.map((item: any, idx: number) => {
+                        const itemX = item.x !== undefined ? item.x : Math.min(65, 4 + (idx * 8) % 55);
+                        const itemY = item.y !== undefined ? item.y : Math.min(65, 6 + (idx * 8) % 55);
+                        const itemWidth = item.width || 36;
+                        const itemHeight = item.minHeight || 200;
+                        const itemZ = item.zIndex || idx + 1;
+                        const itemRot = item.rotation || 0;
 
-                    return (
-                      <div
-                        key={item.id || idx}
-                        className={`apple-card rounded-3xl overflow-hidden transition-all duration-300 flex flex-col justify-between relative group/card ${
-                          item.type === 'image' ? 'min-h-[260px]' : 'p-8'
-                        }`}
-                        style={{
-                          gridColumn: `span ${effectiveColSpan}`,
-                          gridRow: `span ${effectiveRowSpan}`,
-                          minHeight: effectiveRowSpan > 1 ? '460px' : undefined,
-                        }}
-                      >
-                        {/* 1. Image widget in public view */}
-                        {item.type === 'image' && (
-                          <div className="relative w-full h-full min-h-[260px] flex flex-col justify-end">
-                            {item.content?.imageUrl && (
-                              <img
-                                src={item.content.imageUrl}
-                                alt={item.content.title || 'Imagen'}
-                                className="absolute inset-0 w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-700 ease-out"
-                              />
+                        return (
+                          <div
+                            key={item.id || idx}
+                            style={{
+                              position: 'absolute',
+                              left: `${itemX}%`,
+                              top: `${itemY}%`,
+                              width: `${itemWidth}%`,
+                              minHeight: `${itemHeight}px`,
+                              zIndex: itemZ,
+                              transform: `rotate(${itemRot}deg)`,
+                            }}
+                            className={`apple-glass rounded-3xl overflow-hidden shadow-2xl border border-white/20 transition-transform duration-300 hover:scale-[1.01] flex flex-col justify-between ${
+                              item.type === 'image' ? 'p-0' : 'p-5'
+                            }`}
+                          >
+                            {/* 1. Image widget */}
+                            {item.type === 'image' && (
+                              <div
+                                className="relative w-full h-full flex flex-col justify-end"
+                                style={{ minHeight: `${itemHeight}px` }}
+                              >
+                                {item.content?.imageUrl && (
+                                  <img
+                                    src={item.content.imageUrl}
+                                    alt={item.content.title || 'Imagen'}
+                                    className="absolute inset-0 w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-700 ease-out"
+                                  />
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent pointer-events-none" />
+                                <div className="relative p-5 z-10">
+                                  {item.content?.title && (
+                                    <h3 className="font-semibold text-white tracking-tight text-xl">
+                                      {item.content.title}
+                                    </h3>
+                                  )}
+                                  {item.content?.subtitle && (
+                                    <p className="text-xs sm:text-sm text-zinc-300 mt-1 font-normal">
+                                      {item.content.subtitle}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
                             )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
-                            <div className="relative p-6 z-10">
-                              {item.content?.title && (
-                                <h3 className={`font-semibold text-white tracking-tight ${effectiveColSpan > 1 ? 'text-2xl' : 'text-lg'}`}>
-                                  {item.content.title}
-                                </h3>
-                              )}
-                              {item.content?.subtitle && (
-                                <p className="text-xs sm:text-sm text-zinc-300 mt-1 font-normal">
-                                  {item.content.subtitle}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        )}
 
-                        {/* 2. Text widget in public view */}
-                        {item.type === 'text' && (
-                          <div className={`space-y-3 ${item.content?.alignment === 'center' ? 'text-center' : item.content?.alignment === 'right' ? 'text-right' : 'text-left'}`}>
-                            {item.content?.heading && (
-                              <h3 className="text-2xl font-semibold text-white tracking-tight">
-                                {item.content.heading}
-                              </h3>
+                            {/* 2. Text widget */}
+                            {item.type === 'text' && (
+                              <div className={`space-y-2.5 my-auto ${item.content?.alignment === 'center' ? 'text-center' : item.content?.alignment === 'right' ? 'text-right' : 'text-left'}`}>
+                                {item.content?.heading && (
+                                  <h3 className="text-xl sm:text-2xl font-semibold text-white tracking-tight">
+                                    {item.content.heading}
+                                  </h3>
+                                )}
+                                {item.content?.bodyText && (
+                                  <p className="text-sm text-zinc-300 leading-relaxed font-normal">
+                                    {item.content.bodyText}
+                                  </p>
+                                )}
+                              </div>
                             )}
-                            {item.content?.bodyText && (
-                              <p className="text-sm text-[#86868b] leading-relaxed font-normal">
-                                {item.content.bodyText}
-                              </p>
-                            )}
-                          </div>
-                        )}
 
-                        {/* 3. Card widget in public view */}
-                        {item.type === 'card' && (
-                          <div className="space-y-3">
-                            <div className="w-10 h-10 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center mb-4">
-                              <Sparkles className="w-5 h-5" />
-                            </div>
-                            {item.content?.cardTitle && (
-                              <h3 className="text-xl font-semibold text-white tracking-tight">
-                                {item.content.cardTitle}
-                              </h3>
+                            {/* 3. Card widget */}
+                            {item.type === 'card' && (
+                              <div className="space-y-2.5 my-auto">
+                                <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center mb-2">
+                                  <Sparkles className="w-4 h-4" />
+                                </div>
+                                {item.content?.cardTitle && (
+                                  <h3 className="text-lg sm:text-xl font-semibold text-white tracking-tight">
+                                    {item.content.cardTitle}
+                                  </h3>
+                                )}
+                                {item.content?.cardDescription && (
+                                  <p className="text-sm text-zinc-300 leading-relaxed font-normal">
+                                    {item.content.cardDescription}
+                                  </p>
+                                )}
+                              </div>
                             )}
-                            {item.content?.cardDescription && (
-                              <p className="text-sm text-[#86868b] leading-relaxed font-normal">
-                                {item.content.cardDescription}
-                              </p>
-                            )}
-                          </div>
-                        )}
 
-                        {/* 4. Button widget in public view */}
-                        {item.type === 'button' && (
-                          <div className="flex items-center justify-center h-full">
-                            <a
-                              href={item.content?.buttonUrl || '#'}
-                              className="apple-button-primary text-sm font-medium px-6 py-3 rounded-full inline-flex items-center gap-2 shadow-lg hover:scale-105 transition-all"
-                            >
-                              <span>{item.content?.buttonText || 'Conocer Más'}</span>
-                              <ArrowRight className="w-4 h-4" />
-                            </a>
+                            {/* 4. Button widget */}
+                            {item.type === 'button' && (
+                              <div className="flex items-center justify-center h-full my-auto py-2">
+                                <a
+                                  href={item.content?.buttonUrl || '#'}
+                                  className="apple-button-primary text-sm font-medium px-6 py-2.5 rounded-full inline-flex items-center gap-2 shadow-lg hover:scale-105 transition-all"
+                                >
+                                  <span>{item.content?.buttonText || 'Conocer Más'}</span>
+                                  <ArrowRight className="w-4 h-4" />
+                                </a>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    /* MAGNETIC GRID CANVAS VIEW */
+                    <div
+                      className="grid w-full transition-all duration-300"
+                      style={{
+                        gridTemplateColumns: `repeat(${block.content.columns || 3}, minmax(0, 1fr))`,
+                        gap: `${block.content.gap || 16}px`,
+                      }}
+                    >
+                      {block.content.items.map((item: any, idx: number) => {
+                        const columnsCount = block.content.columns || 3;
+                        const effectiveColSpan = Math.min(item.colSpan || 1, columnsCount);
+                        const effectiveRowSpan = item.rowSpan || 1;
+
+                        return (
+                          <div
+                            key={item.id || idx}
+                            className={`apple-card rounded-3xl overflow-hidden transition-all duration-300 flex flex-col justify-between relative group/card ${
+                              item.type === 'image' ? 'min-h-[260px]' : 'p-8'
+                            }`}
+                            style={{
+                              gridColumn: `span ${effectiveColSpan}`,
+                              gridRow: `span ${effectiveRowSpan}`,
+                              minHeight: effectiveRowSpan > 1 ? '460px' : undefined,
+                            }}
+                          >
+                            {/* 1. Image widget in public view */}
+                            {item.type === 'image' && (
+                              <div className="relative w-full h-full min-h-[260px] flex flex-col justify-end">
+                                {item.content?.imageUrl && (
+                                  <img
+                                    src={item.content.imageUrl}
+                                    alt={item.content.title || 'Imagen'}
+                                    className="absolute inset-0 w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-700 ease-out"
+                                  />
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                                <div className="relative p-6 z-10">
+                                  {item.content?.title && (
+                                    <h3 className={`font-semibold text-white tracking-tight ${effectiveColSpan > 1 ? 'text-2xl' : 'text-lg'}`}>
+                                      {item.content.title}
+                                    </h3>
+                                  )}
+                                  {item.content?.subtitle && (
+                                    <p className="text-xs sm:text-sm text-zinc-300 mt-1 font-normal">
+                                      {item.content.subtitle}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 2. Text widget in public view */}
+                            {item.type === 'text' && (
+                              <div className={`space-y-3 ${item.content?.alignment === 'center' ? 'text-center' : item.content?.alignment === 'right' ? 'text-right' : 'text-left'}`}>
+                                {item.content?.heading && (
+                                  <h3 className="text-2xl font-semibold text-white tracking-tight">
+                                    {item.content.heading}
+                                  </h3>
+                                )}
+                                {item.content?.bodyText && (
+                                  <p className="text-sm text-[#86868b] leading-relaxed font-normal">
+                                    {item.content.bodyText}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {/* 3. Card widget in public view */}
+                            {item.type === 'card' && (
+                              <div className="space-y-3">
+                                <div className="w-10 h-10 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center mb-4">
+                                  <Sparkles className="w-5 h-5" />
+                                </div>
+                                {item.content?.cardTitle && (
+                                  <h3 className="text-xl font-semibold text-white tracking-tight">
+                                    {item.content.cardTitle}
+                                  </h3>
+                                )}
+                                {item.content?.cardDescription && (
+                                  <p className="text-sm text-[#86868b] leading-relaxed font-normal">
+                                    {item.content.cardDescription}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {/* 4. Button widget in public view */}
+                            {item.type === 'button' && (
+                              <div className="flex items-center justify-center h-full">
+                                <a
+                                  href={item.content?.buttonUrl || '#'}
+                                  className="apple-button-primary text-sm font-medium px-6 py-3 rounded-full inline-flex items-center gap-2 shadow-lg hover:scale-105 transition-all"
+                                >
+                                  <span>{item.content?.buttonText || 'Conocer Más'}</span>
+                                  <ArrowRight className="w-4 h-4" />
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
               )}
 
               {/* 3. IMAGE POSITIONS CONTAINER (IMAGE_GRID) */}
