@@ -14,10 +14,60 @@ import {
   Layers,
   FolderTree,
   Eye,
+  Lock,
+  Palette,
+  KeyRound,
+  Sparkles,
+  Shield,
+  Mail,
+  User,
+  ArrowRight,
+  ExternalLink,
+  GripVertical,
+  Type as TypeIcon,
+  Square,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  MousePointer,
 } from 'lucide-react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { confirmDeleteAlert, showSuccessToast, showErrorAlert } from '../utils/alerts';
+
+export interface CanvasItem {
+  id: string;
+  type: 'image' | 'text' | 'button' | 'card';
+  colSpan: number; // 1, 2, 3, 4
+  rowSpan: number; // 1, 2
+  content: {
+    imageUrl?: string;
+    title?: string;
+    subtitle?: string;
+    heading?: string;
+    bodyText?: string;
+    alignment?: 'left' | 'center' | 'right';
+    buttonText?: string;
+    buttonUrl?: string;
+    cardTitle?: string;
+    cardDescription?: string;
+  };
+}
+
+export interface LoginSettings {
+  title: string;
+  subtitle: string;
+  badgeText: string;
+  logoUrl: string;
+  bgImageUrl: string;
+  bgBlur: number;
+  bgDarkness: number;
+  glowColor: string;
+  accentColor: string;
+  buttonText: string;
+  helpText: string;
+  showBackLink: boolean;
+}
 
 interface ImageSlot {
   id: string;
@@ -29,7 +79,7 @@ interface ImageSlot {
 
 interface Block {
   id: string;
-  type: 'HERO' | 'IMAGE_GRID' | 'FEATURES' | 'CTA' | 'TEXT';
+  type: 'HERO' | 'IMAGE_GRID' | 'CANVAS_GRID' | 'FEATURES' | 'CTA' | 'TEXT';
   content: Record<string, any>;
   styles?: Record<string, any>;
 }
@@ -53,6 +103,41 @@ const LAYOUT_MODES = [
   { value: 'banner', label: 'Banner Panorámico (1 Columna)', icon: '▭' },
 ];
 
+const GLOW_PRESETS = [
+  { label: 'Esmeralda', value: '#10b981' },
+  { label: 'Azul Apple', value: '#3b82f6' },
+  { label: 'Púrpura Cyber', value: '#8b5cf6' },
+  { label: 'Ámbar Cálido', value: '#f59e0b' },
+  { label: 'Rosa Neón', value: '#ec4899' },
+  { label: 'Rojo Carmesí', value: '#ef4444' },
+  { label: 'Plata Minimal', value: '#71717a' },
+];
+
+const ACCENT_PRESETS = [
+  { label: 'Esmeralda', value: '#059669' },
+  { label: 'Azul Eléctrico', value: '#2563eb' },
+  { label: 'Índigo', value: '#4f46e5' },
+  { label: 'Púrpura', value: '#7c3aed' },
+  { label: 'Naranja Vivo', value: '#ea580c' },
+  { label: 'Blanco Puro', value: '#ffffff' },
+  { label: 'Zinc Obsidiana', value: '#27272a' },
+];
+
+export const defaultLoginSettings: LoginSettings = {
+  title: '',
+  subtitle: 'Ingresa tus credenciales autorizadas para acceder a tu espacio',
+  badgeText: 'Acceso Seguro',
+  logoUrl: '',
+  bgImageUrl: '',
+  bgBlur: 8,
+  bgDarkness: 65,
+  glowColor: '#10b981',
+  accentColor: '#059669',
+  buttonText: 'Iniciar Sesión',
+  helpText: '¿Problemas para acceder? Contacta al soporte técnico',
+  showBackLink: true,
+};
+
 export const ProjectEditor: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -61,7 +146,7 @@ export const ProjectEditor: React.FC = () => {
   const [project, setProject] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'general' | 'builder'>('builder');
+  const [activeTab, setActiveTab] = useState<'builder' | 'general' | 'login'>('builder');
   const [uploadingSlotId, setUploadingSlotId] = useState<string | null>(null);
 
   // Form states for general settings
@@ -72,6 +157,12 @@ export const ProjectEditor: React.FC = () => {
   const [authEnabled, setAuthEnabled] = useState(true);
   const [coverImage, setCoverImage] = useState('');
   const [uploadingCover, setUploadingCover] = useState(false);
+
+  // Login customization state
+  const [loginSettings, setLoginSettings] = useState<LoginSettings>(defaultLoginSettings);
+  const [uploadingLoginLogo, setUploadingLoginLogo] = useState(false);
+  const [uploadingLoginBg, setUploadingLoginBg] = useState(false);
+  const [previewRegisterMode, setPreviewRegisterMode] = useState(false);
 
   // Blocks state
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -94,6 +185,22 @@ export const ProjectEditor: React.FC = () => {
         setAuthEnabled(data.authEnabled);
         setCoverImage(data.settings?.coverImage || '');
         setBlocks(Array.isArray(data.blocks) ? data.blocks : []);
+
+        const savedLogin = data.settings?.loginSettings || {};
+        setLoginSettings({
+          title: savedLogin.title ?? data.title,
+          subtitle: savedLogin.subtitle ?? 'Ingresa tus credenciales autorizadas para acceder a tu espacio',
+          badgeText: savedLogin.badgeText ?? 'Acceso Seguro',
+          logoUrl: savedLogin.logoUrl ?? (data.settings?.coverImage || ''),
+          bgImageUrl: savedLogin.bgImageUrl ?? '',
+          bgBlur: typeof savedLogin.bgBlur === 'number' ? savedLogin.bgBlur : 8,
+          bgDarkness: typeof savedLogin.bgDarkness === 'number' ? savedLogin.bgDarkness : 65,
+          glowColor: savedLogin.glowColor || '#10b981',
+          accentColor: savedLogin.accentColor || '#059669',
+          buttonText: savedLogin.buttonText || 'Iniciar Sesión',
+          helpText: savedLogin.helpText || '¿Problemas para acceder? Contacta al soporte técnico',
+          showBackLink: savedLogin.showBackLink !== undefined ? savedLogin.showBackLink : true,
+        });
       } catch (err) {
         showErrorAlert('Error', 'No se pudo cargar la información del proyecto.');
         navigate('/admin');
@@ -129,6 +236,7 @@ export const ProjectEditor: React.FC = () => {
         settings: {
           ...(project?.settings || {}),
           coverImage: newImageUrl,
+          loginSettings,
         },
       });
 
@@ -137,6 +245,40 @@ export const ProjectEditor: React.FC = () => {
       showErrorAlert('Error al subir', err.response?.data?.message || 'No se pudo subir la imagen.');
     } finally {
       setUploadingCover(false);
+    }
+  };
+
+  // Upload custom logo for login
+  const handleUploadLoginLogo = async (file: File) => {
+    if (!id) return;
+    setUploadingLoginLogo(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await api.post(`/projects/${id}/upload`, formData);
+      setLoginSettings((prev) => ({ ...prev, logoUrl: res.data.url }));
+      showSuccessToast('Logo del Login Subido', 'El archivo se guardó en la carpeta del cliente.');
+    } catch (err: any) {
+      showErrorAlert('Error al subir', err.response?.data?.message || 'No se pudo subir el logo.');
+    } finally {
+      setUploadingLoginLogo(false);
+    }
+  };
+
+  // Upload custom background image for login
+  const handleUploadLoginBg = async (file: File) => {
+    if (!id) return;
+    setUploadingLoginBg(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await api.post(`/projects/${id}/upload`, formData);
+      setLoginSettings((prev) => ({ ...prev, bgImageUrl: res.data.url }));
+      showSuccessToast('Fondo del Login Subido', 'La imagen de fondo se guardó en la carpeta del cliente.');
+    } catch (err: any) {
+      showErrorAlert('Error al subir', err.response?.data?.message || 'No se pudo subir el fondo.');
+    } finally {
+      setUploadingLoginBg(false);
     }
   };
 
@@ -156,10 +298,11 @@ export const ProjectEditor: React.FC = () => {
         settings: {
           ...(project?.settings || {}),
           coverImage,
+          loginSettings,
         },
       });
 
-      showSuccessToast('Guardado', 'Los cambios y bloques se sincronizaron con éxito.');
+      showSuccessToast('Guardado', 'Los cambios, bloques y personalización del login se sincronizaron con éxito.');
     } catch (err: any) {
       showErrorAlert('Error al guardar', err.response?.data?.message || 'Ocurrió un error al guardar los cambios.');
     } finally {
@@ -167,11 +310,59 @@ export const ProjectEditor: React.FC = () => {
     }
   };
 
+  // Drag & drop state for Canvas Grid
+  const [draggedWidgetType, setDraggedWidgetType] = useState<CanvasItem['type'] | null>(null);
+  const [draggedCanvasItemIndex, setDraggedCanvasItemIndex] = useState<{ blockIndex: number; itemIndex: number } | null>(null);
+
   // Block management
   const handleAddBlock = (type: Block['type']) => {
     let newBlock: Block;
 
-    if (type === 'HERO') {
+    if (type === 'CANVAS_GRID') {
+      newBlock = {
+        id: 'canvas-' + Date.now(),
+        type: 'CANVAS_GRID',
+        content: {
+          title: 'Lienzo Modular Drag & Drop',
+          columns: 3,
+          gap: 16,
+          items: [
+            {
+              id: 'c-img-' + Date.now(),
+              type: 'image',
+              colSpan: 2,
+              rowSpan: 2,
+              content: {
+                imageUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=1000&q=80',
+                title: 'Espacio de Imagen Principal',
+                subtitle: 'Arrastra widgets hacia el lienzo para reservar nuevos espacios',
+              },
+            },
+            {
+              id: 'c-text-' + (Date.now() + 1),
+              type: 'text',
+              colSpan: 1,
+              rowSpan: 1,
+              content: {
+                heading: 'Espacio de Texto',
+                bodyText: 'Escribe aquí tu encabezado o mensaje destacado con tipografía limpia.',
+                alignment: 'left',
+              },
+            },
+            {
+              id: 'c-card-' + (Date.now() + 2),
+              type: 'card',
+              colSpan: 1,
+              rowSpan: 1,
+              content: {
+                cardTitle: 'Espacio de Tarjeta',
+                cardDescription: 'Contenedor modular con estética Apple Glassmorphism.',
+              },
+            },
+          ],
+        },
+      };
+    } else if (type === 'HERO') {
       newBlock = {
         id: 'hero-' + Date.now(),
         type: 'HERO',
@@ -245,6 +436,77 @@ export const ProjectEditor: React.FC = () => {
     showSuccessToast('Bloque añadido', `Se agregó un bloque de tipo ${type}`);
   };
 
+  const handleDropWidgetOnCanvas = (blockIndex: number, targetIndex?: number, widgetTypeOverride?: CanvasItem['type']) => {
+    const typeToUse = widgetTypeOverride || draggedWidgetType;
+    if (!typeToUse) return;
+
+    const newItem: CanvasItem = {
+      id: `c-${typeToUse}-${Date.now()}`,
+      type: typeToUse,
+      colSpan: typeToUse === 'image' ? 2 : 1,
+      rowSpan: typeToUse === 'image' ? 2 : 1,
+      content: {
+        imageUrl: typeToUse === 'image' ? 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80' : undefined,
+        title: typeToUse === 'image' ? 'Nuevo Espacio de Imagen' : undefined,
+        subtitle: typeToUse === 'image' ? 'Descripción de la imagen' : undefined,
+        heading: typeToUse === 'text' ? 'Nuevo Encabezado' : undefined,
+        bodyText: typeToUse === 'text' ? 'Escribe aquí tu contenido descriptivo...' : undefined,
+        alignment: 'left',
+        cardTitle: typeToUse === 'card' ? 'Nueva Tarjeta' : undefined,
+        cardDescription: typeToUse === 'card' ? 'Contenedor estilo Glassmorphism...' : undefined,
+        buttonText: typeToUse === 'button' ? 'Hacer Clic Aquí' : undefined,
+        buttonUrl: '#',
+      },
+    };
+
+    const updated = [...blocks];
+    const items = [...(updated[blockIndex].content.items || [])];
+    if (typeof targetIndex === 'number') {
+      items.splice(targetIndex, 0, newItem);
+    } else {
+      items.push(newItem);
+    }
+    updated[blockIndex].content.items = items;
+    setBlocks(updated);
+    setDraggedWidgetType(null);
+    showSuccessToast('Espacio Reservado', `Se reservó un espacio de tipo ${typeToUse.toUpperCase()}`);
+  };
+
+  const handleReorderCanvasItems = (blockIndex: number, fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    const updated = [...blocks];
+    const items = [...(updated[blockIndex].content.items || [])];
+    const [moved] = items.splice(fromIndex, 1);
+    items.splice(toIndex, 0, moved);
+    updated[blockIndex].content.items = items;
+    setBlocks(updated);
+    setDraggedCanvasItemIndex(null);
+  };
+
+  // Upload image for a canvas item
+  const handleUploadCanvasImage = async (blockIndex: number, itemIndex: number, file: File) => {
+    if (!id) return;
+    const slotKey = `canvas-${blockIndex}-${itemIndex}`;
+    setUploadingSlotId(slotKey);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await api.post(`/projects/${id}/upload`, formData);
+      const updated = [...blocks];
+      if (updated[blockIndex]?.content?.items?.[itemIndex]) {
+        updated[blockIndex].content.items[itemIndex].content.imageUrl = res.data.url;
+        setBlocks(updated);
+        showSuccessToast('Imagen subida', 'La imagen se guardó en el espacio reservado.');
+      }
+    } catch (err: any) {
+      showErrorAlert('Error al subir', err.response?.data?.message || 'No se pudo subir la imagen.');
+    } finally {
+      setUploadingSlotId(null);
+    }
+  };
+
   const handleRemoveBlock = async (blockIndex: number) => {
     const confirmed = await confirmDeleteAlert(`Bloque #${blockIndex + 1}`);
     if (!confirmed) return;
@@ -303,7 +565,7 @@ export const ProjectEditor: React.FC = () => {
   return (
     <div className="min-h-screen bg-black text-[#f5f5f7] flex flex-col selection:bg-blue-500/30">
       {/* Top Navbar */}
-      <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-black/70 backdrop-blur-2xl">
+      <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-black/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
@@ -352,7 +614,7 @@ export const ProjectEditor: React.FC = () => {
 
       {/* Tabs Pill Selector */}
       <div className="max-w-6xl w-full mx-auto px-6 pt-6">
-        <div className="bg-zinc-900/80 p-1 rounded-full border border-white/10 flex max-w-sm backdrop-blur-xl">
+        <div className="bg-zinc-900/90 p-1 rounded-full border border-white/10 flex max-w-md">
           <button
             type="button"
             onClick={() => setActiveTab('builder')}
@@ -363,7 +625,7 @@ export const ProjectEditor: React.FC = () => {
             }`}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
-            <span>Constructor de Bloques</span>
+            <span>Constructor</span>
           </button>
 
           <button
@@ -376,7 +638,20 @@ export const ProjectEditor: React.FC = () => {
             }`}
           >
             <Sliders className="w-3.5 h-3.5" />
-            <span>Ajustes Generales</span>
+            <span>General</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('login')}
+            className={`flex-1 py-1.5 text-xs font-medium rounded-full transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 ${
+              activeTab === 'login'
+                ? 'bg-zinc-800 text-white shadow-sm border border-white/10'
+                : 'text-[#86868b] hover:text-white'
+            }`}
+          >
+            <Palette className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Personalizar Login</span>
           </button>
         </div>
       </div>
@@ -554,6 +829,617 @@ export const ProjectEditor: React.FC = () => {
           </div>
         )}
 
+        {/* TAB 3: CUSTOMIZE TENANT LOGIN */}
+        {activeTab === 'login' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {/* Top Toolbar */}
+            <div className="apple-card rounded-3xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Palette className="w-5 h-5 text-emerald-400" />
+                  <h2 className="text-xl font-semibold text-white">Personalización del Login</h2>
+                </div>
+                <p className="text-xs text-[#86868b] mt-1">
+                  Personaliza los fondos, logotipo, colores de acento y textos de la pantalla <code className="text-zinc-300">/{routePrefix}/{project.slug}/login</code>.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Link
+                  to={`/${routePrefix}/${project.slug}/login`}
+                  target="_blank"
+                  className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-xs px-4 py-2 rounded-full font-medium flex items-center gap-1.5 transition-all"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Ver Login en Vivo</span>
+                </Link>
+              </div>
+            </div>
+
+            {/* Split Screen: Controls & Live Mockup */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Left Column: Form Controls */}
+              <div className="lg:col-span-6 space-y-6">
+                {/* 1. Branding & Texts */}
+                <div className="apple-card rounded-3xl p-6 space-y-4">
+                  <div className="flex items-center gap-2 border-b border-white/[0.06] pb-3">
+                    <Shield className="w-4 h-4 text-blue-400" />
+                    <h3 className="text-sm font-semibold text-white">Identidad & Textos</h3>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#86868b] uppercase tracking-wider mb-1.5 pl-1">
+                      Título de Bienvenida
+                    </label>
+                    <input
+                      type="text"
+                      value={loginSettings.title}
+                      onChange={(e) => setLoginSettings({ ...loginSettings, title: e.target.value })}
+                      placeholder={title || 'Nombre del Proyecto'}
+                      className="apple-input w-full rounded-2xl px-3.5 py-2 text-sm text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#86868b] uppercase tracking-wider mb-1.5 pl-1">
+                      Subtítulo / Instrucción
+                    </label>
+                    <textarea
+                      value={loginSettings.subtitle}
+                      onChange={(e) => setLoginSettings({ ...loginSettings, subtitle: e.target.value })}
+                      rows={2}
+                      placeholder="Ingresa tus credenciales autorizadas..."
+                      className="apple-input w-full rounded-2xl px-3.5 py-2 text-sm text-white resize-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#86868b] uppercase tracking-wider mb-1.5 pl-1">
+                      Etiqueta / Badge Superior
+                    </label>
+                    <input
+                      type="text"
+                      value={loginSettings.badgeText}
+                      onChange={(e) => setLoginSettings({ ...loginSettings, badgeText: e.target.value })}
+                      placeholder="Ej. Acceso Seguro, Portal Privado, Staff"
+                      className="apple-input w-full rounded-2xl px-3.5 py-2 text-sm text-white"
+                    />
+                  </div>
+
+                  {/* Logo Upload Box */}
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#86868b] uppercase tracking-wider mb-1.5 pl-1">
+                      Logo o Ícono de la Tarjeta
+                    </label>
+                    <div className="bg-black/60 border border-white/10 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center overflow-hidden flex-shrink-0 relative group/logo">
+                          {loginSettings.logoUrl ? (
+                            <img
+                              src={loginSettings.logoUrl}
+                              alt="Logo login"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Layers className="w-6 h-6 text-zinc-500" />
+                          )}
+                          <label className="absolute inset-0 bg-black/70 opacity-0 group-hover/logo:opacity-100 flex items-center justify-center cursor-pointer transition-opacity">
+                            <Upload className="w-4 h-4 text-white" />
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) handleUploadLoginLogo(f);
+                              }}
+                            />
+                          </label>
+                        </div>
+
+                        <div className="flex-1 space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <label className="apple-button-primary text-xs font-medium px-3 py-1.5 rounded-full cursor-pointer inline-flex items-center gap-1.5">
+                              <Upload className="w-3 h-3" />
+                              <span>{uploadingLoginLogo ? 'Subiendo...' : 'Subir Logotipo'}</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={uploadingLoginLogo}
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) handleUploadLoginLogo(f);
+                                }}
+                              />
+                            </label>
+
+                            {coverImage && (
+                              <button
+                                type="button"
+                                onClick={() => setLoginSettings({ ...loginSettings, logoUrl: coverImage })}
+                                className="text-xs bg-white/[0.06] hover:bg-white/[0.12] text-zinc-300 border border-white/10 px-3 py-1.5 rounded-full transition-all cursor-pointer"
+                              >
+                                Usar portada
+                              </button>
+                            )}
+
+                            {loginSettings.logoUrl && (
+                              <button
+                                type="button"
+                                onClick={() => setLoginSettings({ ...loginSettings, logoUrl: '' })}
+                                className="text-xs text-red-400 hover:text-red-300 p-1 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-zinc-500 font-mono truncate">
+                            {loginSettings.logoUrl || 'Sin logotipo personalizado asignado.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <input
+                        type="text"
+                        value={loginSettings.logoUrl}
+                        onChange={(e) => setLoginSettings({ ...loginSettings, logoUrl: e.target.value })}
+                        placeholder="O pegar URL directa de logotipo..."
+                        className="apple-input w-full rounded-xl px-3 py-1.5 text-xs text-white placeholder-zinc-600 font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Background & Lighting */}
+                <div className="apple-card rounded-3xl p-6 space-y-5">
+                  <div className="flex items-center gap-2 border-b border-white/[0.06] pb-3">
+                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    <h3 className="text-sm font-semibold text-white">Fondo & Iluminación Ambiental</h3>
+                  </div>
+
+                  {/* Background Image Upload */}
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#86868b] uppercase tracking-wider mb-1.5 pl-1">
+                      Imagen de Fondo Completa (Wallpaper)
+                    </label>
+                    <div className="bg-black/60 border border-white/10 rounded-2xl p-4 space-y-3">
+                      <div className="relative aspect-[21/9] rounded-xl overflow-hidden bg-zinc-900 border border-white/10 group/bg">
+                        {loginSettings.bgImageUrl ? (
+                          <img
+                            src={loginSettings.bgImageUrl}
+                            alt="Fondo login"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center text-zinc-600 text-xs">
+                            <ImageIcon className="w-6 h-6 mb-1 text-zinc-600" />
+                            <span>Sin imagen de fondo (fondo oscuro por defecto)</span>
+                          </div>
+                        )}
+
+                        <label className="absolute inset-0 bg-black/70 opacity-0 group-hover/bg:opacity-100 flex flex-col items-center justify-center text-white text-xs cursor-pointer transition-opacity backdrop-blur-xs">
+                          <Upload className="w-5 h-5 mb-1 text-emerald-400" />
+                          <span>{uploadingLoginBg ? 'Subiendo...' : 'Subir imagen de fondo'}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            disabled={uploadingLoginBg}
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleUploadLoginBg(f);
+                            }}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <input
+                          type="text"
+                          value={loginSettings.bgImageUrl}
+                          onChange={(e) => setLoginSettings({ ...loginSettings, bgImageUrl: e.target.value })}
+                          placeholder="O pegar URL directa de fondo (ej. Unsplash)..."
+                          className="apple-input flex-1 rounded-xl px-3 py-1.5 text-xs text-white placeholder-zinc-600 font-mono mr-2"
+                        />
+                        {loginSettings.bgImageUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setLoginSettings({ ...loginSettings, bgImageUrl: '' })}
+                            className="text-xs text-red-400 hover:text-red-300 p-1 cursor-pointer flex-shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sliders: Blur & Darkness */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-1 pl-1">
+                        <label className="text-[11px] font-medium text-[#86868b] uppercase tracking-wider">
+                          Desenfoque (Blur)
+                        </label>
+                        <span className="text-xs font-mono text-emerald-400">{loginSettings.bgBlur}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="24"
+                        value={loginSettings.bgBlur}
+                        onChange={(e) => setLoginSettings({ ...loginSettings, bgBlur: Number(e.target.value) })}
+                        className="w-full accent-emerald-500 cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1 pl-1">
+                        <label className="text-[11px] font-medium text-[#86868b] uppercase tracking-wider">
+                          Oscuridad del Filtro
+                        </label>
+                        <span className="text-xs font-mono text-emerald-400">{loginSettings.bgDarkness}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="20"
+                        max="90"
+                        value={loginSettings.bgDarkness}
+                        onChange={(e) => setLoginSettings({ ...loginSettings, bgDarkness: Number(e.target.value) })}
+                        className="w-full accent-emerald-500 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Ambient Glow Presets */}
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#86868b] uppercase tracking-wider mb-2 pl-1">
+                      Color de Resplandor Ambiental (Halo Glow)
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {GLOW_PRESETS.map((preset) => (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          onClick={() => setLoginSettings({ ...loginSettings, glowColor: preset.value })}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all cursor-pointer ${
+                            loginSettings.glowColor === preset.value
+                              ? 'bg-white/[0.12] text-white border-white/40 shadow-sm'
+                              : 'bg-white/[0.04] text-zinc-400 border-white/[0.08] hover:bg-white/[0.08]'
+                          }`}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shadow-xs"
+                            style={{ backgroundColor: preset.value }}
+                          />
+                          <span>{preset.label}</span>
+                        </button>
+                      ))}
+
+                      {/* Custom color picker */}
+                      <div className="flex items-center gap-1.5 bg-white/[0.04] border border-white/[0.08] px-2 py-1 rounded-full">
+                        <input
+                          type="color"
+                          value={loginSettings.glowColor}
+                          onChange={(e) => setLoginSettings({ ...loginSettings, glowColor: e.target.value })}
+                          className="w-5 h-5 rounded-full bg-transparent border-0 cursor-pointer p-0"
+                          title="Elegir color personalizado"
+                        />
+                        <span className="text-[11px] font-mono text-zinc-400">{loginSettings.glowColor}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Button Style & Actions */}
+                <div className="apple-card rounded-3xl p-6 space-y-4">
+                  <div className="flex items-center gap-2 border-b border-white/[0.06] pb-3">
+                    <KeyRound className="w-4 h-4 text-purple-400" />
+                    <h3 className="text-sm font-semibold text-white">Botón & Acciones</h3>
+                  </div>
+
+                  {/* Accent Color Presets */}
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#86868b] uppercase tracking-wider mb-2 pl-1">
+                      Color Primario del Botón (Acento)
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {ACCENT_PRESETS.map((preset) => (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          onClick={() => setLoginSettings({ ...loginSettings, accentColor: preset.value })}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all cursor-pointer ${
+                            loginSettings.accentColor === preset.value
+                              ? 'bg-white/[0.12] text-white border-white/40 shadow-sm'
+                              : 'bg-white/[0.04] text-zinc-400 border-white/[0.08] hover:bg-white/[0.08]'
+                          }`}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shadow-xs"
+                            style={{ backgroundColor: preset.value }}
+                          />
+                          <span>{preset.label}</span>
+                        </button>
+                      ))}
+
+                      {/* Custom color picker */}
+                      <div className="flex items-center gap-1.5 bg-white/[0.04] border border-white/[0.08] px-2 py-1 rounded-full">
+                        <input
+                          type="color"
+                          value={loginSettings.accentColor}
+                          onChange={(e) => setLoginSettings({ ...loginSettings, accentColor: e.target.value })}
+                          className="w-5 h-5 rounded-full bg-transparent border-0 cursor-pointer p-0"
+                          title="Elegir color personalizado"
+                        />
+                        <span className="text-[11px] font-mono text-zinc-400">{loginSettings.accentColor}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#86868b] uppercase tracking-wider mb-1.5 pl-1">
+                      Texto del Botón de Ingreso
+                    </label>
+                    <input
+                      type="text"
+                      value={loginSettings.buttonText}
+                      onChange={(e) => setLoginSettings({ ...loginSettings, buttonText: e.target.value })}
+                      placeholder="Iniciar Sesión"
+                      className="apple-input w-full rounded-2xl px-3.5 py-2 text-sm text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#86868b] uppercase tracking-wider mb-1.5 pl-1">
+                      Texto de Ayuda / Pie de Página
+                    </label>
+                    <input
+                      type="text"
+                      value={loginSettings.helpText}
+                      onChange={(e) => setLoginSettings({ ...loginSettings, helpText: e.target.value })}
+                      placeholder="¿Problemas para acceder? Contacta al administrador"
+                      className="apple-input w-full rounded-2xl px-3.5 py-2 text-sm text-white"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={loginSettings.showBackLink}
+                        onChange={(e) => setLoginSettings({ ...loginSettings, showBackLink: e.target.checked })}
+                        className="rounded-md bg-zinc-900 border-white/20 text-emerald-500 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                      />
+                      <span className="text-xs text-zinc-300">
+                        Mostrar enlace para volver al sitio público (/{routePrefix}/{project.slug})
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Live Interactive Mockup */}
+              <div className="lg:col-span-6 sticky top-24 space-y-3">
+                <div className="flex items-center justify-between px-2">
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                    <Eye className="w-4 h-4 text-emerald-400" />
+                    <span className="font-semibold text-white">Previsualización en Tiempo Real</span>
+                  </div>
+
+                  {/* Mode switcher in mockup */}
+                  <div className="bg-zinc-900 border border-white/10 rounded-full p-0.5 flex text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewRegisterMode(false)}
+                      className={`px-3 py-1 rounded-full font-medium transition-all cursor-pointer ${
+                        !previewRegisterMode
+                          ? 'bg-zinc-800 text-white shadow-xs'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Login
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewRegisterMode(true)}
+                      className={`px-3 py-1 rounded-full font-medium transition-all cursor-pointer ${
+                        previewRegisterMode
+                          ? 'bg-zinc-800 text-white shadow-xs'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Registro
+                    </button>
+                  </div>
+                </div>
+
+                {/* macOS Browser Window Frame */}
+                <div className="rounded-3xl border border-white/15 bg-black overflow-hidden shadow-2xl relative">
+                  {/* macOS Titlebar */}
+                  <div className="bg-zinc-950/90 border-b border-white/[0.08] px-4 py-2.5 flex items-center justify-between backdrop-blur-md">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
+                    </div>
+
+                    <div className="bg-zinc-900 border border-white/10 rounded-lg px-3 py-1 text-[11px] font-mono text-zinc-400 max-w-xs truncate flex items-center gap-1.5">
+                      <Lock className="w-2.5 h-2.5 text-emerald-400" />
+                      <span>/{routePrefix}/{project.slug}/login</span>
+                    </div>
+
+                    <div className="w-10" />
+                  </div>
+
+                  {/* Mockup Canvas Screen */}
+                  <div className="relative min-h-[520px] p-6 flex flex-col items-center justify-center overflow-hidden">
+                    {/* Background image & filter */}
+                    {loginSettings.bgImageUrl ? (
+                      <div
+                        className="absolute inset-0 bg-cover bg-center transition-all duration-300"
+                        style={{
+                          backgroundImage: `url(${loginSettings.bgImageUrl})`,
+                          filter: `blur(${loginSettings.bgBlur}px)`,
+                          transform: 'scale(1.08)',
+                        }}
+                      />
+                    ) : null}
+
+                    {/* Dark filter overlay */}
+                    <div
+                      className="absolute inset-0 bg-black transition-opacity duration-300"
+                      style={{ opacity: loginSettings.bgDarkness / 100 }}
+                    />
+
+                    {/* Ambient Glow */}
+                    <div
+                      className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[300px] h-[300px] rounded-full blur-[50px] pointer-events-none transition-all duration-300 opacity-30"
+                      style={{ backgroundColor: loginSettings.glowColor }}
+                    />
+
+                    {/* Mockup Login Card Container */}
+                    <div className="relative z-10 w-full max-w-[340px] flex flex-col items-center">
+                      {/* Logo & Header */}
+                      <div className="text-center mb-5 flex flex-col items-center">
+                        <div
+                          className="w-12 h-12 rounded-2xl border flex items-center justify-center shadow-xl mb-3 overflow-hidden"
+                          style={{
+                            backgroundColor: `${loginSettings.accentColor}20`,
+                            borderColor: `${loginSettings.accentColor}40`,
+                          }}
+                        >
+                          {loginSettings.logoUrl ? (
+                            <img
+                              src={loginSettings.logoUrl}
+                              alt="Logo"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Layers className="w-6 h-6" style={{ color: loginSettings.accentColor }} />
+                          )}
+                        </div>
+
+                        {loginSettings.badgeText && (
+                          <span
+                            className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full border mb-2 uppercase tracking-wider"
+                            style={{
+                              backgroundColor: `${loginSettings.accentColor}15`,
+                              borderColor: `${loginSettings.accentColor}30`,
+                              color: loginSettings.accentColor,
+                            }}
+                          >
+                            {loginSettings.badgeText}
+                          </span>
+                        )}
+
+                        <h4 className="text-lg font-semibold text-white tracking-tight">
+                          {loginSettings.title || title || project.title}
+                        </h4>
+
+                        {loginSettings.subtitle && (
+                          <p className="text-[11px] text-zinc-400 mt-0.5 line-clamp-2 max-w-[280px]">
+                            {loginSettings.subtitle}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Glass Card */}
+                      <div className="w-full apple-glass rounded-3xl p-5 border border-white/15 shadow-2xl">
+                        {/* Segmented Control */}
+                        <div className="bg-zinc-900/90 p-0.5 rounded-full border border-white/10 flex mb-4">
+                          <div
+                            className={`flex-1 py-1 text-[10px] font-medium rounded-full text-center ${
+                              !previewRegisterMode ? 'bg-zinc-800 text-white shadow-xs' : 'text-zinc-500'
+                            }`}
+                          >
+                            Iniciar Sesión
+                          </div>
+                          <div
+                            className={`flex-1 py-1 text-[10px] font-medium rounded-full text-center ${
+                              previewRegisterMode ? 'bg-zinc-800 text-white shadow-xs' : 'text-zinc-500'
+                            }`}
+                          >
+                            Registrar
+                          </div>
+                        </div>
+
+                        {/* Dummy inputs */}
+                        <div className="space-y-2.5">
+                          {previewRegisterMode && (
+                            <div>
+                              <label className="block text-[9px] text-zinc-400 uppercase tracking-wider mb-1">
+                                Nombre Completo
+                              </label>
+                              <div className="relative">
+                                <User className="w-3 h-3 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                                <div className="apple-input w-full rounded-xl pl-8 pr-3 py-1.5 text-xs text-zinc-400">
+                                  Juan Pérez
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="block text-[9px] text-zinc-400 uppercase tracking-wider mb-1">
+                              Correo Electrónico
+                            </label>
+                            <div className="relative">
+                              <Mail className="w-3 h-3 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                              <div className="apple-input w-full rounded-xl pl-8 pr-3 py-1.5 text-xs text-zinc-400">
+                                usuario@sitio.com
+                              </div>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[9px] text-zinc-400 uppercase tracking-wider mb-1">
+                              Contraseña
+                            </label>
+                            <div className="relative">
+                              <Lock className="w-3 h-3 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                              <div className="apple-input w-full rounded-xl pl-8 pr-3 py-1.5 text-xs text-zinc-400">
+                                ••••••••
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Action Button with customized accentColor */}
+                          <button
+                            type="button"
+                            className="w-full mt-2 font-medium py-2 rounded-xl flex items-center justify-center gap-1.5 text-xs text-white shadow-lg transition-all"
+                            style={{
+                              backgroundColor: loginSettings.accentColor,
+                              color: loginSettings.accentColor === '#ffffff' ? '#000000' : '#ffffff',
+                            }}
+                          >
+                            <span>{previewRegisterMode ? 'Registrar Usuario' : loginSettings.buttonText || 'Iniciar Sesión'}</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {/* Help text & Back link */}
+                        <div className="mt-4 pt-3 border-t border-white/[0.08] text-center space-y-1.5">
+                          {loginSettings.helpText && (
+                            <p className="text-[10px] text-zinc-500">{loginSettings.helpText}</p>
+                          )}
+                          {loginSettings.showBackLink && (
+                            <div className="text-[10px] text-zinc-400 inline-flex items-center gap-1 hover:text-white">
+                              <span>Ver sitio público</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* TAB 2: VISUAL PAGE BUILDER & IMAGE POSITIONS CONTAINER */}
         {activeTab === 'builder' && (
           <div className="space-y-8 animate-in fade-in duration-200">
@@ -567,6 +1453,14 @@ export const ProjectEditor: React.FC = () => {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => handleAddBlock('CANVAS_GRID')}
+                  className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs px-3.5 py-2 rounded-full font-medium flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>+ Lienzo Drag & Drop</span>
+                </button>
+
                 <button
                   onClick={() => handleAddBlock('IMAGE_GRID')}
                   className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs px-3.5 py-2 rounded-full font-medium flex items-center gap-1.5 transition-all cursor-pointer"
@@ -607,13 +1501,13 @@ export const ProjectEditor: React.FC = () => {
                 <Layers className="w-10 h-10 text-zinc-500 mx-auto mb-3" />
                 <h4 className="text-base font-semibold text-white">Tu página no tiene bloques aún</h4>
                 <p className="text-xs text-[#86868b] max-w-sm mx-auto mt-1 mb-5">
-                  Haz clic en cualquiera de los botones superiores para añadir un contenedor de imágenes o secciones.
+                  Haz clic en cualquiera de los botones superiores para añadir un lienzo Drag & Drop o secciones.
                 </p>
                 <button
-                  onClick={() => handleAddBlock('IMAGE_GRID')}
+                  onClick={() => handleAddBlock('CANVAS_GRID')}
                   className="apple-button-primary text-xs font-medium px-4 py-2 rounded-full cursor-pointer"
                 >
-                  Añadir Contenedor de Imágenes
+                  Añadir Lienzo Drag & Drop
                 </button>
               </div>
             ) : (
@@ -629,7 +1523,8 @@ export const ProjectEditor: React.FC = () => {
                         <span className="w-6 h-6 rounded-lg bg-white/[0.06] text-xs font-mono flex items-center justify-center text-zinc-400">
                           {blockIndex + 1}
                         </span>
-                        <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
+                          {block.type === 'CANVAS_GRID' && 'Lienzo Modular Drag & Drop (Espacios Reservados)'}
                           {block.type === 'IMAGE_GRID' && 'Contenedor Multipolar de Imágenes'}
                           {block.type === 'HERO' && 'Encabezado Hero'}
                           {block.type === 'FEATURES' && 'Cuadrícula de Características'}
@@ -666,6 +1561,598 @@ export const ProjectEditor: React.FC = () => {
                         </button>
                       </div>
                     </div>
+
+                    {/* BLOCK TYPE: CANVAS_GRID (LIENZO DRAG & DROP MODULAR) */}
+                    {block.type === 'CANVAS_GRID' && (
+                      <div className="space-y-6">
+                        {/* 1. Global Canvas Grid Settings */}
+                        <div className="flex flex-wrap items-center justify-between gap-4 bg-black/40 border border-white/10 p-4 rounded-2xl">
+                          <div className="flex items-center gap-4">
+                            <div>
+                              <label className="block text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
+                                Columnas del Lienzo
+                              </label>
+                              <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-xl border border-white/10">
+                                {[2, 3, 4, 6].map((num) => (
+                                  <button
+                                    key={num}
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...blocks];
+                                      updated[blockIndex].content.columns = num;
+                                      setBlocks(updated);
+                                    }}
+                                    className={`px-3 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer ${
+                                      (block.content.columns || 3) === num
+                                        ? 'bg-emerald-600 text-white shadow-xs'
+                                        : 'text-zinc-400 hover:text-white'
+                                    }`}
+                                  >
+                                    {num} Cols
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
+                                Espaciado (Gap)
+                              </label>
+                              <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-xl border border-white/10">
+                                {[8, 16, 24, 32].map((g) => (
+                                  <button
+                                    key={g}
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...blocks];
+                                      updated[blockIndex].content.gap = g;
+                                      setBlocks(updated);
+                                    }}
+                                    className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer ${
+                                      (block.content.gap || 16) === g
+                                        ? 'bg-zinc-800 text-white border border-white/10 shadow-xs'
+                                        : 'text-zinc-400 hover:text-white'
+                                    }`}
+                                  >
+                                    {g}px
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-xs text-zinc-500 font-mono">
+                            {Array.isArray(block.content.items) ? block.content.items.length : 0} Espacios Reservados
+                          </div>
+                        </div>
+
+                        {/* 2. Draggable Widget Palette Dock */}
+                        <div className="bg-gradient-to-r from-emerald-950/40 via-zinc-900/60 to-blue-950/40 border border-emerald-500/20 rounded-2xl p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <MousePointer className="w-4 h-4 text-emerald-400" />
+                              <span className="text-xs font-semibold text-white">
+                                Paleta de Widgets Arrastrables:
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-zinc-400 hidden sm:inline">
+                              Arrastra al lienzo o haz clic para añadir
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                            {/* Widget 1: Imagen */}
+                            <div
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData('canvasWidgetType', 'image');
+                                setDraggedWidgetType('image');
+                              }}
+                              onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'image')}
+                              className="bg-black/60 hover:bg-emerald-950/50 border border-emerald-500/30 hover:border-emerald-400 rounded-xl p-3 flex items-center gap-2.5 cursor-grab active:cursor-grabbing transition-all group"
+                              title="Arrastra al lienzo para reservar un espacio de Imagen"
+                            >
+                              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <ImageIcon className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <span className="text-xs font-medium text-white block">🖼️ Imagen</span>
+                                <span className="text-[10px] text-zinc-400 block">Espacio foto / banner</span>
+                              </div>
+                            </div>
+
+                            {/* Widget 2: Texto */}
+                            <div
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData('canvasWidgetType', 'text');
+                                setDraggedWidgetType('text');
+                              }}
+                              onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'text')}
+                              className="bg-black/60 hover:bg-blue-950/50 border border-blue-500/30 hover:border-blue-400 rounded-xl p-3 flex items-center gap-2.5 cursor-grab active:cursor-grabbing transition-all group"
+                              title="Arrastra al lienzo para reservar un espacio de Texto"
+                            >
+                              <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <TypeIcon className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <span className="text-xs font-medium text-white block">✍️ Texto</span>
+                                <span className="text-[10px] text-zinc-400 block">Título y contenido</span>
+                              </div>
+                            </div>
+
+                            {/* Widget 3: Tarjeta */}
+                            <div
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData('canvasWidgetType', 'card');
+                                setDraggedWidgetType('card');
+                              }}
+                              onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'card')}
+                              className="bg-black/60 hover:bg-purple-950/50 border border-purple-500/30 hover:border-purple-400 rounded-xl p-3 flex items-center gap-2.5 cursor-grab active:cursor-grabbing transition-all group"
+                              title="Arrastra al lienzo para reservar una Tarjeta Glass"
+                            >
+                              <div className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <Square className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <span className="text-xs font-medium text-white block">🔲 Tarjeta</span>
+                                <span className="text-[10px] text-zinc-400 block">Caja Glassmorphism</span>
+                              </div>
+                            </div>
+
+                            {/* Widget 4: Botón */}
+                            <div
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData('canvasWidgetType', 'button');
+                                setDraggedWidgetType('button');
+                              }}
+                              onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'button')}
+                              className="bg-black/60 hover:bg-amber-950/50 border border-amber-500/30 hover:border-amber-400 rounded-xl p-3 flex items-center gap-2.5 cursor-grab active:cursor-grabbing transition-all group"
+                              title="Arrastra al lienzo para reservar un Botón"
+                            >
+                              <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <ArrowRight className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <span className="text-xs font-medium text-white block">🔘 Botón</span>
+                                <span className="text-[10px] text-zinc-400 block">Botón de acción</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 3. The Interactive Canvas Grid (El Lienzo de Dropzones) */}
+                        <div
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const wType = e.dataTransfer.getData('canvasWidgetType') as CanvasItem['type'];
+                            if (wType) handleDropWidgetOnCanvas(blockIndex, undefined, wType);
+                          }}
+                          className="grid w-full transition-all duration-300"
+                          style={{
+                            gridTemplateColumns: `repeat(${block.content.columns || 3}, minmax(0, 1fr))`,
+                            gap: `${block.content.gap || 16}px`,
+                          }}
+                        >
+                          {Array.isArray(block.content.items) &&
+                            block.content.items.map((item: CanvasItem, itemIndex: number) => {
+                              const columnsCount = block.content.columns || 3;
+                              const effectiveColSpan = Math.min(item.colSpan || 1, columnsCount);
+                              const effectiveRowSpan = item.rowSpan || 1;
+                              const isUploading = uploadingSlotId === `canvas-${blockIndex}-${itemIndex}`;
+
+                              return (
+                                <div
+                                  key={item.id || itemIndex}
+                                  draggable
+                                  onDragStart={(e) => {
+                                    e.dataTransfer.setData('canvasItemIndex', String(itemIndex));
+                                    setDraggedCanvasItemIndex({ blockIndex, itemIndex });
+                                  }}
+                                  onDragOver={(e) => e.preventDefault()}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    const sourceIndexStr = e.dataTransfer.getData('canvasItemIndex');
+                                    if (sourceIndexStr !== '') {
+                                      handleReorderCanvasItems(blockIndex, Number(sourceIndexStr), itemIndex);
+                                    } else {
+                                      const wType = e.dataTransfer.getData('canvasWidgetType') as CanvasItem['type'];
+                                      if (wType) handleDropWidgetOnCanvas(blockIndex, itemIndex, wType);
+                                    }
+                                  }}
+                                  onDragEnd={() => setDraggedCanvasItemIndex(null)}
+                                  className={`apple-glass rounded-3xl p-5 border transition-all duration-200 flex flex-col justify-between relative group/item shadow-xl ${
+                                    draggedCanvasItemIndex?.blockIndex === blockIndex && draggedCanvasItemIndex?.itemIndex === itemIndex
+                                      ? 'opacity-40 border-dashed border-emerald-400 scale-95'
+                                      : 'border-white/15 hover:border-emerald-400/50'
+                                  }`}
+                                  style={{
+                                    gridColumn: `span ${effectiveColSpan}`,
+                                    gridRow: `span ${effectiveRowSpan}`,
+                                    minHeight: effectiveRowSpan > 1 ? '380px' : '200px',
+                                  }}
+                                >
+                                  {/* Item Header Toolbar */}
+                                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-4">
+                                    <div className="flex items-center gap-2">
+                                      <div className="cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-white">
+                                        <GripVertical className="w-3.5 h-3.5" />
+                                      </div>
+                                      <span
+                                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider border ${
+                                          item.type === 'image'
+                                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                            : item.type === 'text'
+                                            ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                                            : item.type === 'card'
+                                            ? 'bg-purple-500/10 text-purple-400 border-purple-500/30'
+                                            : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                                        }`}
+                                      >
+                                        {item.type}
+                                      </span>
+                                    </div>
+
+                                    {/* Span Controls & Delete */}
+                                    <div className="flex items-center gap-1.5">
+                                      {/* ColSpan Controls */}
+                                      <div className="flex items-center bg-zinc-900 border border-white/10 rounded-lg p-0.5 text-[10px]">
+                                        {[1, 2, 3, 4].map(
+                                          (span) =>
+                                            span <= columnsCount && (
+                                              <button
+                                                key={span}
+                                                type="button"
+                                                onClick={() => {
+                                                  const updated = [...blocks];
+                                                  updated[blockIndex].content.items[itemIndex].colSpan = span;
+                                                  setBlocks(updated);
+                                                }}
+                                                className={`px-1.5 py-0.5 rounded font-mono transition-all cursor-pointer ${
+                                                  effectiveColSpan === span
+                                                    ? 'bg-zinc-700 text-white font-bold'
+                                                    : 'text-zinc-500 hover:text-zinc-300'
+                                                }`}
+                                                title={`Ocupar ${span} columna(s)`}
+                                              >
+                                                {span}c
+                                              </button>
+                                            )
+                                        )}
+                                      </div>
+
+                                      {/* RowSpan Controls */}
+                                      <div className="flex items-center bg-zinc-900 border border-white/10 rounded-lg p-0.5 text-[10px]">
+                                        {[1, 2].map((rSpan) => (
+                                          <button
+                                            key={rSpan}
+                                            type="button"
+                                            onClick={() => {
+                                              const updated = [...blocks];
+                                              updated[blockIndex].content.items[itemIndex].rowSpan = rSpan;
+                                              setBlocks(updated);
+                                            }}
+                                            className={`px-1.5 py-0.5 rounded font-mono transition-all cursor-pointer ${
+                                              effectiveRowSpan === rSpan
+                                                ? 'bg-zinc-700 text-white font-bold'
+                                                : 'text-zinc-500 hover:text-zinc-300'
+                                            }`}
+                                            title={`Ocupar ${rSpan} fila(s) de alto`}
+                                          >
+                                            {rSpan}f
+                                          </button>
+                                        ))}
+                                      </div>
+
+                                      {/* Remove Item */}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const updated = [...blocks];
+                                          updated[blockIndex].content.items = updated[blockIndex].content.items.filter(
+                                            (_: any, idx: number) => idx !== itemIndex
+                                          );
+                                          setBlocks(updated);
+                                        }}
+                                        className="p-1 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 cursor-pointer transition-all"
+                                        title="Eliminar este espacio reservado"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Item Body: According to Widget Type */}
+                                  <div className="flex-1 space-y-3">
+                                    {/* 1. IMAGE WIDGET BODY */}
+                                    {item.type === 'image' && (
+                                      <div className="space-y-3">
+                                        <div className="relative aspect-video rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 group/img">
+                                          {item.content.imageUrl ? (
+                                            <img
+                                              src={item.content.imageUrl}
+                                              alt={item.content.title || 'Imagen reservada'}
+                                              className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500"
+                                            />
+                                          ) : (
+                                            <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 p-4 text-center">
+                                              <ImageIcon className="w-6 h-6 mb-1" />
+                                              <span className="text-xs">Espacio de imagen vacío</span>
+                                            </div>
+                                          )}
+
+                                          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+
+                                          <div className="absolute bottom-3 left-3 right-3 z-10 pointer-events-none">
+                                            {item.content.title && (
+                                              <h5 className="text-sm font-semibold text-white truncate">
+                                                {item.content.title}
+                                              </h5>
+                                            )}
+                                            {item.content.subtitle && (
+                                              <p className="text-[11px] text-zinc-300 truncate">
+                                                {item.content.subtitle}
+                                              </p>
+                                            )}
+                                          </div>
+
+                                          {/* Upload Hover Overlay */}
+                                          <label className="absolute inset-0 bg-black/75 opacity-0 group-hover/img:opacity-100 flex flex-col items-center justify-center text-white text-xs cursor-pointer transition-opacity backdrop-blur-xs">
+                                            <Upload className="w-5 h-5 mb-1 text-emerald-400" />
+                                            <span className="font-medium">
+                                              {isUploading ? 'Subiendo...' : 'Subir imagen a este espacio'}
+                                            </span>
+                                            <span className="text-[10px] text-zinc-400 mt-0.5">
+                                              Guarda en la carpeta del tenant
+                                            </span>
+                                            <input
+                                              type="file"
+                                              accept="image/*"
+                                              disabled={isUploading}
+                                              className="hidden"
+                                              onChange={(e) => {
+                                                const f = e.target.files?.[0];
+                                                if (f) handleUploadCanvasImage(blockIndex, itemIndex, f);
+                                              }}
+                                            />
+                                          </label>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                          <input
+                                            type="text"
+                                            value={item.content.title || ''}
+                                            onChange={(e) => {
+                                              const updated = [...blocks];
+                                              updated[blockIndex].content.items[itemIndex].content.title = e.target.value;
+                                              setBlocks(updated);
+                                            }}
+                                            placeholder="Título sobre la imagen..."
+                                            className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white"
+                                          />
+                                          <input
+                                            type="text"
+                                            value={item.content.subtitle || ''}
+                                            onChange={(e) => {
+                                              const updated = [...blocks];
+                                              updated[blockIndex].content.items[itemIndex].content.subtitle = e.target.value;
+                                              setBlocks(updated);
+                                            }}
+                                            placeholder="Subtítulo..."
+                                            className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white"
+                                          />
+                                        </div>
+
+                                        <input
+                                          type="text"
+                                          value={item.content.imageUrl || ''}
+                                          onChange={(e) => {
+                                            const updated = [...blocks];
+                                            updated[blockIndex].content.items[itemIndex].content.imageUrl = e.target.value;
+                                            setBlocks(updated);
+                                          }}
+                                          placeholder="O pegar URL directa de imagen..."
+                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-mono placeholder-zinc-600"
+                                        />
+                                      </div>
+                                    )}
+
+                                    {/* 2. TEXT WIDGET BODY */}
+                                    {item.type === 'text' && (
+                                      <div className="space-y-2.5">
+                                        <div className="flex items-center justify-between">
+                                          <label className="text-[10px] text-zinc-500 uppercase tracking-wider">
+                                            Encabezado
+                                          </label>
+                                          <div className="flex items-center gap-1 bg-zinc-900 border border-white/10 rounded-lg p-0.5">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].content.alignment = 'left';
+                                                setBlocks(updated);
+                                              }}
+                                              className={`p-1 rounded cursor-pointer ${
+                                                item.content.alignment === 'left' ? 'bg-zinc-700 text-white' : 'text-zinc-500'
+                                              }`}
+                                            >
+                                              <AlignLeft className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].content.alignment = 'center';
+                                                setBlocks(updated);
+                                              }}
+                                              className={`p-1 rounded cursor-pointer ${
+                                                item.content.alignment === 'center' ? 'bg-zinc-700 text-white' : 'text-zinc-500'
+                                              }`}
+                                            >
+                                              <AlignCenter className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].content.alignment = 'right';
+                                                setBlocks(updated);
+                                              }}
+                                              className={`p-1 rounded cursor-pointer ${
+                                                item.content.alignment === 'right' ? 'bg-zinc-700 text-white' : 'text-zinc-500'
+                                              }`}
+                                            >
+                                              <AlignRight className="w-3 h-3" />
+                                            </button>
+                                          </div>
+                                        </div>
+
+                                        <input
+                                          type="text"
+                                          value={item.content.heading || ''}
+                                          onChange={(e) => {
+                                            const updated = [...blocks];
+                                            updated[blockIndex].content.items[itemIndex].content.heading = e.target.value;
+                                            setBlocks(updated);
+                                          }}
+                                          placeholder="Título del bloque de texto..."
+                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-semibold"
+                                        />
+
+                                        <textarea
+                                          value={item.content.bodyText || ''}
+                                          onChange={(e) => {
+                                            const updated = [...blocks];
+                                            updated[blockIndex].content.items[itemIndex].content.bodyText = e.target.value;
+                                            setBlocks(updated);
+                                          }}
+                                          rows={3}
+                                          placeholder="Escribe aquí el contenido o párrafo..."
+                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white resize-none"
+                                        />
+                                      </div>
+                                    )}
+
+                                    {/* 3. CARD WIDGET BODY */}
+                                    {item.type === 'card' && (
+                                      <div className="space-y-2.5">
+                                        <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center mb-1">
+                                          <Square className="w-4 h-4" />
+                                        </div>
+                                        <input
+                                          type="text"
+                                          value={item.content.cardTitle || ''}
+                                          onChange={(e) => {
+                                            const updated = [...blocks];
+                                            updated[blockIndex].content.items[itemIndex].content.cardTitle = e.target.value;
+                                            setBlocks(updated);
+                                          }}
+                                          placeholder="Título de la tarjeta..."
+                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-semibold"
+                                        />
+                                        <textarea
+                                          value={item.content.cardDescription || ''}
+                                          onChange={(e) => {
+                                            const updated = [...blocks];
+                                            updated[blockIndex].content.items[itemIndex].content.cardDescription = e.target.value;
+                                            setBlocks(updated);
+                                          }}
+                                          rows={2}
+                                          placeholder="Descripción de la tarjeta..."
+                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white resize-none"
+                                        />
+                                      </div>
+                                    )}
+
+                                    {/* 4. BUTTON WIDGET BODY */}
+                                    {item.type === 'button' && (
+                                      <div className="space-y-2.5">
+                                        <input
+                                          type="text"
+                                          value={item.content.buttonText || ''}
+                                          onChange={(e) => {
+                                            const updated = [...blocks];
+                                            updated[blockIndex].content.items[itemIndex].content.buttonText = e.target.value;
+                                            setBlocks(updated);
+                                          }}
+                                          placeholder="Texto del botón..."
+                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-medium"
+                                        />
+                                        <input
+                                          type="text"
+                                          value={item.content.buttonUrl || ''}
+                                          onChange={(e) => {
+                                            const updated = [...blocks];
+                                            updated[blockIndex].content.items[itemIndex].content.buttonUrl = e.target.value;
+                                            setBlocks(updated);
+                                          }}
+                                          placeholder="URL de enlace (ej. https://... o #seccion)"
+                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-mono placeholder-zinc-600"
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                          {/* End Dropzone / Add Slot Area */}
+                          <div
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              const wType = e.dataTransfer.getData('canvasWidgetType') as CanvasItem['type'];
+                              if (wType) handleDropWidgetOnCanvas(blockIndex, undefined, wType);
+                            }}
+                            className="border-2 border-dashed border-white/20 hover:border-emerald-400/80 rounded-3xl p-6 flex flex-col items-center justify-center text-center transition-all bg-black/20 hover:bg-emerald-950/20 min-h-[180px] group"
+                          >
+                            <div className="w-10 h-10 rounded-2xl bg-white/[0.06] border border-white/10 group-hover:bg-emerald-500/20 group-hover:border-emerald-400/30 flex items-center justify-center text-zinc-400 group-hover:text-emerald-400 mb-2.5 transition-all">
+                              <Plus className="w-5 h-5" />
+                            </div>
+                            <span className="text-xs font-medium text-zinc-300 group-hover:text-white">
+                              Soltar elemento aquí para reservar espacio
+                            </span>
+                            <span className="text-[11px] text-zinc-500 mt-0.5 mb-3">
+                              O haz clic en cualquiera de los accesos directos:
+                            </span>
+
+                            <div className="flex flex-wrap items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'image')}
+                                className="text-[11px] bg-white/[0.06] hover:bg-emerald-600/30 text-zinc-300 hover:text-emerald-300 border border-white/10 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                              >
+                                + Imagen
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'text')}
+                                className="text-[11px] bg-white/[0.06] hover:bg-blue-600/30 text-zinc-300 hover:text-blue-300 border border-white/10 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                              >
+                                + Texto
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'card')}
+                                className="text-[11px] bg-white/[0.06] hover:bg-purple-600/30 text-zinc-300 hover:text-purple-300 border border-white/10 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                              >
+                                + Tarjeta
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'button')}
+                                className="text-[11px] bg-white/[0.06] hover:bg-amber-600/30 text-zinc-300 hover:text-amber-300 border border-white/10 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                              >
+                                + Botón
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* BLOCK TYPE: IMAGE_GRID (CONTENEDOR DE POSICIONES PARA IMAGENES) */}
                     {block.type === 'IMAGE_GRID' && (
