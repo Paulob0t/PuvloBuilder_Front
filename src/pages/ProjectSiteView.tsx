@@ -84,7 +84,7 @@ export const ProjectSiteView: React.FC = () => {
   return (
     <div className="min-h-screen bg-black text-[#f5f5f7] flex flex-col selection:bg-blue-500/30">
       {/* Site Frosted Navbar */}
-      <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-black/60 backdrop-blur-2xl">
+      <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-black/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {project.settings?.coverImage ? (
@@ -138,7 +138,7 @@ export const ProjectSiteView: React.FC = () => {
               {/* 1. APPLE HERO BLOCK */}
               {block.type === 'HERO' && (
                 <div className="text-center py-20 px-6 rounded-3xl relative overflow-hidden">
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-gradient-to-b from-blue-600/15 via-indigo-600/5 to-transparent rounded-full blur-[140px] pointer-events-none" />
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-gradient-to-b from-blue-600/15 via-indigo-600/5 to-transparent rounded-full blur-[60px] pointer-events-none" />
                   
                   <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.05] border border-white/10 text-xs text-[#86868b] mb-6 backdrop-blur-md">
                     <Sparkles className="w-3.5 h-3.5 text-blue-400" />
@@ -164,7 +164,112 @@ export const ProjectSiteView: React.FC = () => {
                 </div>
               )}
 
-              {/* 2. IMAGE POSITIONS CONTAINER (IMAGE_GRID) */}
+              {/* 2. CANVAS DRAG & DROP MODULAR GRID */}
+              {block.type === 'CANVAS_GRID' && Array.isArray(block.content.items) && (
+                <div
+                  className="grid w-full transition-all duration-300"
+                  style={{
+                    gridTemplateColumns: `repeat(${block.content.columns || 3}, minmax(0, 1fr))`,
+                    gap: `${block.content.gap || 16}px`,
+                  }}
+                >
+                  {block.content.items.map((item: any, idx: number) => {
+                    const columnsCount = block.content.columns || 3;
+                    const effectiveColSpan = Math.min(item.colSpan || 1, columnsCount);
+                    const effectiveRowSpan = item.rowSpan || 1;
+
+                    return (
+                      <div
+                        key={item.id || idx}
+                        className={`apple-card rounded-3xl overflow-hidden transition-all duration-300 flex flex-col justify-between relative group/card ${
+                          item.type === 'image' ? 'min-h-[260px]' : 'p-8'
+                        }`}
+                        style={{
+                          gridColumn: `span ${effectiveColSpan}`,
+                          gridRow: `span ${effectiveRowSpan}`,
+                          minHeight: effectiveRowSpan > 1 ? '460px' : undefined,
+                        }}
+                      >
+                        {/* 1. Image widget in public view */}
+                        {item.type === 'image' && (
+                          <div className="relative w-full h-full min-h-[260px] flex flex-col justify-end">
+                            {item.content?.imageUrl && (
+                              <img
+                                src={item.content.imageUrl}
+                                alt={item.content.title || 'Imagen'}
+                                className="absolute inset-0 w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-700 ease-out"
+                              />
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                            <div className="relative p-6 z-10">
+                              {item.content?.title && (
+                                <h3 className={`font-semibold text-white tracking-tight ${effectiveColSpan > 1 ? 'text-2xl' : 'text-lg'}`}>
+                                  {item.content.title}
+                                </h3>
+                              )}
+                              {item.content?.subtitle && (
+                                <p className="text-xs sm:text-sm text-zinc-300 mt-1 font-normal">
+                                  {item.content.subtitle}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 2. Text widget in public view */}
+                        {item.type === 'text' && (
+                          <div className={`space-y-3 ${item.content?.alignment === 'center' ? 'text-center' : item.content?.alignment === 'right' ? 'text-right' : 'text-left'}`}>
+                            {item.content?.heading && (
+                              <h3 className="text-2xl font-semibold text-white tracking-tight">
+                                {item.content.heading}
+                              </h3>
+                            )}
+                            {item.content?.bodyText && (
+                              <p className="text-sm text-[#86868b] leading-relaxed font-normal">
+                                {item.content.bodyText}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 3. Card widget in public view */}
+                        {item.type === 'card' && (
+                          <div className="space-y-3">
+                            <div className="w-10 h-10 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center mb-4">
+                              <Sparkles className="w-5 h-5" />
+                            </div>
+                            {item.content?.cardTitle && (
+                              <h3 className="text-xl font-semibold text-white tracking-tight">
+                                {item.content.cardTitle}
+                              </h3>
+                            )}
+                            {item.content?.cardDescription && (
+                              <p className="text-sm text-[#86868b] leading-relaxed font-normal">
+                                {item.content.cardDescription}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 4. Button widget in public view */}
+                        {item.type === 'button' && (
+                          <div className="flex items-center justify-center h-full">
+                            <a
+                              href={item.content?.buttonUrl || '#'}
+                              className="apple-button-primary text-sm font-medium px-6 py-3 rounded-full inline-flex items-center gap-2 shadow-lg hover:scale-105 transition-all"
+                            >
+                              <span>{item.content?.buttonText || 'Conocer Más'}</span>
+                              <ArrowRight className="w-4 h-4" />
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* 3. IMAGE POSITIONS CONTAINER (IMAGE_GRID) */}
               {block.type === 'IMAGE_GRID' && Array.isArray(block.content.slots) && (
                 <div>
                   {/* BENTO ASYMMETRIC LAYOUT */}
