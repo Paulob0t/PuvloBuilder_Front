@@ -171,10 +171,10 @@ export const SuperAdminDashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-black text-[#f5f5f7] flex flex-col selection:bg-blue-500/30">
       {/* Ambient glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[300px] bg-gradient-to-b from-blue-600/10 via-transparent to-transparent blur-[120px] pointer-events-none" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[300px] bg-gradient-to-b from-blue-600/10 via-transparent to-transparent blur-[60px] pointer-events-none" />
 
       {/* Top Navbar */}
-      <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-black/60 backdrop-blur-2xl">
+      <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-black/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-zinc-700 to-zinc-900 border border-white/15 flex items-center justify-center shadow-lg">
