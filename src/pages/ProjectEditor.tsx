@@ -30,6 +30,14 @@ import {
   AlignCenter,
   AlignRight,
   MousePointer,
+  Copy,
+  RotateCw,
+  Move,
+  Maximize2,
+  ArrowUp,
+  ArrowDown,
+  Magnet,
+  Link2,
 } from 'lucide-react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -38,8 +46,14 @@ import { confirmDeleteAlert, showSuccessToast, showErrorAlert } from '../utils/a
 export interface CanvasItem {
   id: string;
   type: 'image' | 'text' | 'button' | 'card';
-  colSpan: number; // 1, 2, 3, 4
-  rowSpan: number; // 1, 2
+  colSpan?: number; // 1, 2, 3, 4, 6
+  rowSpan?: number; // 1, 2, 3
+  x?: number; // 0 to 90 (% in freestyle mode)
+  y?: number; // 0 to 90 (% in freestyle mode)
+  width?: number; // 15 to 100 (% width in freestyle mode)
+  minHeight?: number; // px in freestyle mode
+  zIndex?: number; // Layering order
+  rotation?: number; // -15 to 15 degrees
   content: {
     imageUrl?: string;
     title?: string;
@@ -166,6 +180,13 @@ export const ProjectEditor: React.FC = () => {
 
   // Blocks state
   const [blocks, setBlocks] = useState<Block[]>([]);
+  const [canvasPreviewMode, setCanvasPreviewMode] = useState<Record<number, boolean>>({});
+  const [resizingItem, setResizingItem] = useState<{
+    blockIndex: number;
+    itemIndex: number;
+    initialWidth: number;
+    initialMinHeight: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!superAdmin) {
@@ -323,7 +344,9 @@ export const ProjectEditor: React.FC = () => {
         id: 'canvas-' + Date.now(),
         type: 'CANVAS_GRID',
         content: {
-          title: 'Lienzo Modular Drag & Drop',
+          title: 'Lienzo Modular Híbrido',
+          mode: 'freestyle', // 'grid' | 'freestyle'
+          canvasHeight: 560,
           columns: 3,
           gap: 16,
           items: [
@@ -332,10 +355,16 @@ export const ProjectEditor: React.FC = () => {
               type: 'image',
               colSpan: 2,
               rowSpan: 2,
+              x: 4,
+              y: 6,
+              width: 55,
+              minHeight: 320,
+              zIndex: 1,
+              rotation: 0,
               content: {
                 imageUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=1000&q=80',
                 title: 'Espacio de Imagen Principal',
-                subtitle: 'Arrastra widgets hacia el lienzo para reservar nuevos espacios',
+                subtitle: 'Arrastra libremente o cambia a modo cuadrícula magnética',
               },
             },
             {
@@ -343,8 +372,14 @@ export const ProjectEditor: React.FC = () => {
               type: 'text',
               colSpan: 1,
               rowSpan: 1,
+              x: 62,
+              y: 8,
+              width: 34,
+              minHeight: 180,
+              zIndex: 2,
+              rotation: 0,
               content: {
-                heading: 'Espacio de Texto',
+                heading: 'Espacio de Texto Libre',
                 bodyText: 'Escribe aquí tu encabezado o mensaje destacado con tipografía limpia.',
                 alignment: 'left',
               },
@@ -354,6 +389,12 @@ export const ProjectEditor: React.FC = () => {
               type: 'card',
               colSpan: 1,
               rowSpan: 1,
+              x: 62,
+              y: 52,
+              width: 34,
+              minHeight: 180,
+              zIndex: 3,
+              rotation: -2,
               content: {
                 cardTitle: 'Espacio de Tarjeta',
                 cardDescription: 'Contenedor modular con estética Apple Glassmorphism.',
@@ -436,15 +477,30 @@ export const ProjectEditor: React.FC = () => {
     showSuccessToast('Bloque añadido', `Se agregó un bloque de tipo ${type}`);
   };
 
-  const handleDropWidgetOnCanvas = (blockIndex: number, targetIndex?: number, widgetTypeOverride?: CanvasItem['type']) => {
+  const handleDropWidgetOnCanvas = (
+    blockIndex: number,
+    targetIndex?: number,
+    widgetTypeOverride?: CanvasItem['type'],
+    coords?: { x: number; y: number }
+  ) => {
     const typeToUse = widgetTypeOverride || draggedWidgetType;
     if (!typeToUse) return;
+
+    const currentBlock = blocks[blockIndex];
+    const items = [...(currentBlock?.content?.items || [])];
+    const maxZ = items.reduce((max, it) => Math.max(max, it.zIndex || 1), 0);
 
     const newItem: CanvasItem = {
       id: `c-${typeToUse}-${Date.now()}`,
       type: typeToUse,
       colSpan: typeToUse === 'image' ? 2 : 1,
       rowSpan: typeToUse === 'image' ? 2 : 1,
+      x: coords ? coords.x : Math.min(65, 6 + (items.length * 7) % 55),
+      y: coords ? coords.y : Math.min(65, 8 + (items.length * 7) % 55),
+      width: typeToUse === 'image' ? 48 : typeToUse === 'button' ? 28 : 36,
+      minHeight: typeToUse === 'button' ? 120 : typeToUse === 'image' ? 260 : 180,
+      zIndex: maxZ + 1,
+      rotation: 0,
       content: {
         imageUrl: typeToUse === 'image' ? 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80' : undefined,
         title: typeToUse === 'image' ? 'Nuevo Espacio de Imagen' : undefined,
@@ -452,15 +508,14 @@ export const ProjectEditor: React.FC = () => {
         heading: typeToUse === 'text' ? 'Nuevo Encabezado' : undefined,
         bodyText: typeToUse === 'text' ? 'Escribe aquí tu contenido descriptivo...' : undefined,
         alignment: 'left',
-        cardTitle: typeToUse === 'card' ? 'Nueva Tarjeta' : undefined,
-        cardDescription: typeToUse === 'card' ? 'Contenedor estilo Glassmorphism...' : undefined,
+        cardTitle: typeToUse === 'card' ? 'Nueva Tarjeta Glass' : undefined,
+        cardDescription: typeToUse === 'card' ? 'Contenedor modular libre...' : undefined,
         buttonText: typeToUse === 'button' ? 'Hacer Clic Aquí' : undefined,
         buttonUrl: '#',
       },
     };
 
     const updated = [...blocks];
-    const items = [...(updated[blockIndex].content.items || [])];
     if (typeof targetIndex === 'number') {
       items.splice(targetIndex, 0, newItem);
     } else {
@@ -469,7 +524,173 @@ export const ProjectEditor: React.FC = () => {
     updated[blockIndex].content.items = items;
     setBlocks(updated);
     setDraggedWidgetType(null);
-    showSuccessToast('Espacio Reservado', `Se reservó un espacio de tipo ${typeToUse.toUpperCase()}`);
+    showSuccessToast('Elemento Agregado', `Se añadió un elemento ${typeToUse.toUpperCase()} al lienzo`);
+  };
+
+  const handleDuplicateCanvasItem = (blockIndex: number, itemIndex: number) => {
+    const updated = [...blocks];
+    const items = [...(updated[blockIndex].content.items || [])];
+    const source = items[itemIndex];
+    if (!source) return;
+
+    const maxZ = items.reduce((max, it) => Math.max(max, it.zIndex || 1), 0);
+    const duplicate: CanvasItem = {
+      ...JSON.parse(JSON.stringify(source)),
+      id: `c-${source.type}-${Date.now()}`,
+      x: Math.min(75, (source.x || 10) + 4),
+      y: Math.min(75, (source.y || 10) + 4),
+      zIndex: maxZ + 1,
+    };
+
+    items.push(duplicate);
+    updated[blockIndex].content.items = items;
+    setBlocks(updated);
+    showSuccessToast('Duplicado', 'Se duplicó el elemento con éxito');
+  };
+
+  // Magnetic snap helper to snap to neighbor edges or canvas bounds with 0% gap when close
+  const snapToNeighbors = (
+    rawX: number,
+    rawY: number,
+    itemWidth: number,
+    items: CanvasItem[],
+    currentIndex?: number
+  ) => {
+    let snappedX = rawX;
+    let snappedY = rawY;
+    const SNAP_THRESHOLD = 3.5; // tolerance in percentage
+
+    // Canvas boundary snapping
+    if (Math.abs(snappedX) < SNAP_THRESHOLD) snappedX = 0;
+    if (Math.abs(snappedX + itemWidth - 100) < SNAP_THRESHOLD) snappedX = 100 - itemWidth;
+    if (Math.abs(snappedY) < SNAP_THRESHOLD) snappedY = 0;
+
+    // Center snapping
+    if (Math.abs(snappedX + itemWidth / 2 - 50) < SNAP_THRESHOLD) snappedX = 50 - itemWidth / 2;
+
+    // Neighbor widgets magnetic docking & snapping (juntos sin separación indeseada)
+    items.forEach((other, idx) => {
+      if (idx === currentIndex) return;
+      const otherX = other.x ?? 0;
+      const otherY = other.y ?? 0;
+      const otherW = other.width || 36;
+
+      // 1. Align Left with other widget's Left
+      if (Math.abs(snappedX - otherX) < SNAP_THRESHOLD) {
+        snappedX = otherX;
+      }
+      // 2. Dock directly to the RIGHT of other widget (Pegar a la derecha con 0 gap)
+      if (Math.abs(snappedX - (otherX + otherW)) < SNAP_THRESHOLD) {
+        snappedX = otherX + otherW;
+      }
+      // 3. Dock directly to the LEFT of other widget (Pegar a la izquierda con 0 gap)
+      if (Math.abs(snappedX + itemWidth - otherX) < SNAP_THRESHOLD) {
+        snappedX = Math.max(0, otherX - itemWidth);
+      }
+      // 4. Align Top with other widget's Top
+      if (Math.abs(snappedY - otherY) < SNAP_THRESHOLD) {
+        snappedY = otherY;
+      }
+    });
+
+    return {
+      x: Math.max(0, Math.min(100 - itemWidth, Math.round(snappedX))),
+      y: Math.max(0, Math.min(85, Math.round(snappedY))),
+    };
+  };
+
+  // Helper to dock a widget right next to the previous widget
+  const handleDockNextToPrevious = (blockIndex: number, itemIndex: number) => {
+    const updated = [...blocks];
+    const items = [...(updated[blockIndex].content.items || [])];
+    const current = items[itemIndex];
+    if (!current || itemIndex === 0) return;
+    const prev = items[itemIndex - 1];
+    if (!prev) return;
+
+    const prevX = prev.x ?? 0;
+    const prevY = prev.y ?? 0;
+    const prevW = prev.width || 36;
+    const currentW = current.width || 36;
+
+    // Check if it fits on the same horizontal row
+    if (prevX + prevW + currentW <= 100) {
+      current.x = prevX + prevW;
+      current.y = prevY;
+    } else {
+      // Otherwise dock underneath aligned left
+      current.x = prevX;
+      current.y = Math.min(80, prevY + 35);
+    }
+
+    updated[blockIndex].content.items = items;
+    setBlocks(updated);
+    showSuccessToast('Ajuste Magnético', 'Elemento acoplado perfectamente al widget adyacente');
+  };
+
+  const handleChangeCanvasItemZIndex = (blockIndex: number, itemIndex: number, direction: 'up' | 'down') => {
+    const updated = [...blocks];
+    const items = [...(updated[blockIndex].content.items || [])];
+    const currentZ = items[itemIndex].zIndex || 1;
+    items[itemIndex].zIndex = direction === 'up' ? currentZ + 1 : Math.max(1, currentZ - 1);
+    updated[blockIndex].content.items = items;
+    setBlocks(updated);
+  };
+
+  const handleStartResize = (
+    e: React.MouseEvent,
+    blockIndex: number,
+    itemIndex: number,
+    containerElement: HTMLElement | null
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const item = blocks[blockIndex]?.content?.items?.[itemIndex];
+    if (!item) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initialWidth = item.width || 36;
+    const initialMinHeight = item.minHeight || 200;
+
+    const rect = containerElement
+      ? containerElement.getBoundingClientRect()
+      : { width: 800 };
+
+    setResizingItem({
+      blockIndex,
+      itemIndex,
+      initialWidth,
+      initialMinHeight,
+    });
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+
+      const deltaWidthPercent = (deltaX / rect.width) * 100;
+      const newWidth = Math.max(15, Math.min(100, Math.round(initialWidth + deltaWidthPercent)));
+      const newMinHeight = Math.max(80, Math.min(850, Math.round(initialMinHeight + deltaY)));
+
+      setBlocks((prevBlocks) => {
+        const next = [...prevBlocks];
+        if (next[blockIndex]?.content?.items?.[itemIndex]) {
+          next[blockIndex].content.items[itemIndex].width = newWidth;
+          next[blockIndex].content.items[itemIndex].minHeight = newMinHeight;
+        }
+        return next;
+      });
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      setResizingItem(null);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
   };
 
   const handleReorderCanvasItems = (blockIndex: number, fromIndex: number, toIndex: number) => {
@@ -1562,81 +1783,196 @@ export const ProjectEditor: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* BLOCK TYPE: CANVAS_GRID (LIENZO DRAG & DROP MODULAR) */}
+                    {/* BLOCK TYPE: CANVAS_GRID (LIENZO HÍBRIDO MODULAR DRAG & DROP) */}
                     {block.type === 'CANVAS_GRID' && (
                       <div className="space-y-6">
-                        {/* 1. Global Canvas Grid Settings */}
-                        <div className="flex flex-wrap items-center justify-between gap-4 bg-black/40 border border-white/10 p-4 rounded-2xl">
-                          <div className="flex items-center gap-4">
+                        {/* 1. Global Canvas Hybrid Settings Toolbar */}
+                        <div className="flex flex-wrap items-center justify-between gap-4 bg-black/60 border border-white/10 p-4 rounded-2xl">
+                          <div className="flex flex-wrap items-center gap-4">
+                            {/* Mode Toggle Switch */}
                             <div>
                               <label className="block text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
-                                Columnas del Lienzo
+                                Modo de Lienzo
                               </label>
-                              <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-xl border border-white/10">
-                                {[2, 3, 4, 6].map((num) => (
-                                  <button
-                                    key={num}
-                                    type="button"
-                                    onClick={() => {
-                                      const updated = [...blocks];
-                                      updated[blockIndex].content.columns = num;
-                                      setBlocks(updated);
-                                    }}
-                                    className={`px-3 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer ${
-                                      (block.content.columns || 3) === num
-                                        ? 'bg-emerald-600 text-white shadow-xs'
-                                        : 'text-zinc-400 hover:text-white'
-                                    }`}
-                                  >
-                                    {num} Cols
-                                  </button>
-                                ))}
+                              <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-xl border border-white/10">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...blocks];
+                                    updated[blockIndex].content.mode = 'freestyle';
+                                    setBlocks(updated);
+                                  }}
+                                  className={`px-3 py-1 text-xs rounded-lg font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
+                                    (block.content.mode || 'freestyle') === 'freestyle'
+                                      ? 'bg-emerald-600 text-white shadow-md font-semibold'
+                                      : 'text-zinc-400 hover:text-white'
+                                  }`}
+                                >
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                  <span>🎨 Modo Libre (Freestyle)</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...blocks];
+                                    updated[blockIndex].content.mode = 'grid';
+                                    setBlocks(updated);
+                                  }}
+                                  className={`px-3 py-1 text-xs rounded-lg font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
+                                    block.content.mode === 'grid'
+                                      ? 'bg-blue-600 text-white shadow-md font-semibold'
+                                      : 'text-zinc-400 hover:text-white'
+                                  }`}
+                                >
+                                  <LayoutGrid className="w-3.5 h-3.5" />
+                                  <span>⊞ Cuadrícula Magnética</span>
+                                </button>
                               </div>
                             </div>
 
-                            <div>
-                              <label className="block text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
-                                Espaciado (Gap)
-                              </label>
-                              <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-xl border border-white/10">
-                                {[8, 16, 24, 32].map((g) => (
-                                  <button
-                                    key={g}
-                                    type="button"
-                                    onClick={() => {
-                                      const updated = [...blocks];
-                                      updated[blockIndex].content.gap = g;
-                                      setBlocks(updated);
-                                    }}
-                                    className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer ${
-                                      (block.content.gap || 16) === g
-                                        ? 'bg-zinc-800 text-white border border-white/10 shadow-xs'
-                                        : 'text-zinc-400 hover:text-white'
-                                    }`}
-                                  >
-                                    {g}px
-                                  </button>
-                                ))}
+                            {/* Options for Freestyle Mode */}
+                            {(block.content.mode || 'freestyle') === 'freestyle' ? (
+                              <div className="flex flex-wrap items-center gap-3">
+                                <div>
+                                  <label className="block text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
+                                    Alto del Lienzo
+                                  </label>
+                                  <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-xl border border-white/10">
+                                    {[450, 580, 720, 900].map((h) => (
+                                      <button
+                                        key={h}
+                                        type="button"
+                                        onClick={() => {
+                                          const updated = [...blocks];
+                                          updated[blockIndex].content.canvasHeight = h;
+                                          setBlocks(updated);
+                                        }}
+                                        className={`px-2.5 py-1 text-xs rounded-lg font-mono transition-all cursor-pointer ${
+                                          (block.content.canvasHeight || 580) === h
+                                            ? 'bg-zinc-700 text-white font-bold'
+                                            : 'text-zinc-500 hover:text-zinc-300'
+                                        }`}
+                                      >
+                                        {h}px
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* 1:1 WYSIWYG Real Preview Toggle */}
+                                <div>
+                                  <label className="block text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
+                                    Visualización
+                                  </label>
+                                  <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-xl border border-white/10">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCanvasPreviewMode((prev) => ({ ...prev, [blockIndex]: false }));
+                                      }}
+                                      className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1 ${
+                                        !canvasPreviewMode[blockIndex]
+                                          ? 'bg-zinc-700 text-white font-semibold'
+                                          : 'text-zinc-400 hover:text-white'
+                                      }`}
+                                    >
+                                      <span>🛠️ Editor</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCanvasPreviewMode((prev) => ({ ...prev, [blockIndex]: true }));
+                                      }}
+                                      className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1 ${
+                                        canvasPreviewMode[blockIndex]
+                                          ? 'bg-emerald-600 text-white font-semibold shadow-xs'
+                                          : 'text-zinc-400 hover:text-white'
+                                      }`}
+                                      title="Ver exactamente cómo se verá publicado con 100% de precisión visual"
+                                    >
+                                      <Eye className="w-3 h-3" />
+                                      <span>👁️ Vista Previa 1:1</span>
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              /* Options for Grid Mode */
+                              <>
+                                <div>
+                                  <label className="block text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
+                                    Columnas
+                                  </label>
+                                  <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-xl border border-white/10">
+                                    {[2, 3, 4, 6].map((num) => (
+                                      <button
+                                        key={num}
+                                        type="button"
+                                        onClick={() => {
+                                          const updated = [...blocks];
+                                          updated[blockIndex].content.columns = num;
+                                          setBlocks(updated);
+                                        }}
+                                        className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer ${
+                                          (block.content.columns || 3) === num
+                                            ? 'bg-blue-600 text-white shadow-xs'
+                                            : 'text-zinc-400 hover:text-white'
+                                        }`}
+                                      >
+                                        {num} Cols
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <label className="block text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
+                                    Espaciado (Gap)
+                                  </label>
+                                  <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-xl border border-white/10">
+                                    {[8, 16, 24, 32].map((g) => (
+                                      <button
+                                        key={g}
+                                        type="button"
+                                        onClick={() => {
+                                          const updated = [...blocks];
+                                          updated[blockIndex].content.gap = g;
+                                          setBlocks(updated);
+                                        }}
+                                        className={`px-2 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer ${
+                                          (block.content.gap || 16) === g
+                                            ? 'bg-zinc-800 text-white border border-white/10 shadow-xs'
+                                            : 'text-zinc-400 hover:text-white'
+                                        }`}
+                                      >
+                                        {g}px
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              </>
+                            )}
                           </div>
 
-                          <div className="text-xs text-zinc-500 font-mono">
-                            {Array.isArray(block.content.items) ? block.content.items.length : 0} Espacios Reservados
+                          <div className="text-xs text-zinc-500 font-mono flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                            <span>{Array.isArray(block.content.items) ? block.content.items.length : 0} Elementos en Lienzo</span>
                           </div>
                         </div>
 
                         {/* 2. Draggable Widget Palette Dock */}
                         <div className="bg-gradient-to-r from-emerald-950/40 via-zinc-900/60 to-blue-950/40 border border-emerald-500/20 rounded-2xl p-4">
-                          <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center justify-between mb-2.5">
                             <div className="flex items-center gap-2">
                               <MousePointer className="w-4 h-4 text-emerald-400" />
                               <span className="text-xs font-semibold text-white">
-                                Paleta de Widgets Arrastrables:
+                                Paleta de Widgets (Arrastra al lienzo o haz clic):
                               </span>
                             </div>
                             <span className="text-[11px] text-zinc-400 hidden sm:inline">
-                              Arrastra al lienzo o haz clic para añadir
+                              {(block.content.mode || 'freestyle') === 'freestyle'
+                                ? '🎨 Suelta en cualquier posición X, Y'
+                                : '⊞ Se acomodará en la cuadrícula'}
                             </span>
                           </div>
 
@@ -1657,7 +1993,7 @@ export const ProjectEditor: React.FC = () => {
                               </div>
                               <div>
                                 <span className="text-xs font-medium text-white block">🖼️ Imagen</span>
-                                <span className="text-[10px] text-zinc-400 block">Espacio foto / banner</span>
+                                <span className="text-[10px] text-zinc-400 block">Foto / Banner</span>
                               </div>
                             </div>
 
@@ -1697,7 +2033,7 @@ export const ProjectEditor: React.FC = () => {
                               </div>
                               <div>
                                 <span className="text-xs font-medium text-white block">🔲 Tarjeta</span>
-                                <span className="text-[10px] text-zinc-400 block">Caja Glassmorphism</span>
+                                <span className="text-[10px] text-zinc-400 block">Módulo Glass</span>
                               </div>
                             </div>
 
@@ -1717,389 +2053,550 @@ export const ProjectEditor: React.FC = () => {
                               </div>
                               <div>
                                 <span className="text-xs font-medium text-white block">🔘 Botón</span>
-                                <span className="text-[10px] text-zinc-400 block">Botón de acción</span>
+                                <span className="text-[10px] text-zinc-400 block">Acción con enlace</span>
                               </div>
                             </div>
                           </div>
                         </div>
 
-                        {/* 3. The Interactive Canvas Grid (El Lienzo de Dropzones) */}
-                        <div
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            const wType = e.dataTransfer.getData('canvasWidgetType') as CanvasItem['type'];
-                            if (wType) handleDropWidgetOnCanvas(blockIndex, undefined, wType);
-                          }}
-                          className="grid w-full transition-all duration-300"
-                          style={{
-                            gridTemplateColumns: `repeat(${block.content.columns || 3}, minmax(0, 1fr))`,
-                            gap: `${block.content.gap || 16}px`,
-                          }}
-                        >
-                          {Array.isArray(block.content.items) &&
-                            block.content.items.map((item: CanvasItem, itemIndex: number) => {
-                              const columnsCount = block.content.columns || 3;
-                              const effectiveColSpan = Math.min(item.colSpan || 1, columnsCount);
-                              const effectiveRowSpan = item.rowSpan || 1;
-                              const isUploading = uploadingSlotId === `canvas-${blockIndex}-${itemIndex}`;
+                        {/* 3A. FREESTYLE CANVAS VIEW (MODO LIBRE X / Y / CAPAS) */}
+                        {(block.content.mode || 'freestyle') === 'freestyle' ? (
+                          <div
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const grabOffsetX = Number(e.dataTransfer.getData('grabOffsetX') || 0);
+                              const grabOffsetY = Number(e.dataTransfer.getData('grabOffsetY') || 0);
 
-                              return (
-                                <div
-                                  key={item.id || itemIndex}
-                                  draggable
-                                  onDragStart={(e) => {
-                                    e.dataTransfer.setData('canvasItemIndex', String(itemIndex));
-                                    setDraggedCanvasItemIndex({ blockIndex, itemIndex });
-                                  }}
-                                  onDragOver={(e) => e.preventDefault()}
-                                  onDrop={(e) => {
-                                    e.preventDefault();
-                                    const sourceIndexStr = e.dataTransfer.getData('canvasItemIndex');
-                                    if (sourceIndexStr !== '') {
-                                      handleReorderCanvasItems(blockIndex, Number(sourceIndexStr), itemIndex);
-                                    } else {
-                                      const wType = e.dataTransfer.getData('canvasWidgetType') as CanvasItem['type'];
-                                      if (wType) handleDropWidgetOnCanvas(blockIndex, itemIndex, wType);
-                                    }
-                                  }}
-                                  onDragEnd={() => setDraggedCanvasItemIndex(null)}
-                                  className={`apple-glass rounded-3xl p-5 border transition-all duration-200 flex flex-col justify-between relative group/item shadow-xl ${
-                                    draggedCanvasItemIndex?.blockIndex === blockIndex && draggedCanvasItemIndex?.itemIndex === itemIndex
-                                      ? 'opacity-40 border-dashed border-emerald-400 scale-95'
-                                      : 'border-white/15 hover:border-emerald-400/50'
-                                  }`}
-                                  style={{
-                                    gridColumn: `span ${effectiveColSpan}`,
-                                    gridRow: `span ${effectiveRowSpan}`,
-                                    minHeight: effectiveRowSpan > 1 ? '380px' : '200px',
-                                  }}
-                                >
-                                  {/* Item Header Toolbar */}
-                                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-4">
-                                    <div className="flex items-center gap-2">
-                                      <div className="cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-white">
-                                        <GripVertical className="w-3.5 h-3.5" />
+                              const moveIndexStr = e.dataTransfer.getData('canvasItemMoveIndex');
+                              const sourceGridIndexStr = e.dataTransfer.getData('canvasItemIndex');
+                              const widgetType = e.dataTransfer.getData('canvasWidgetType') as CanvasItem['type'];
+
+                              const updated = [...blocks];
+                              const currentItems: CanvasItem[] = updated[blockIndex]?.content?.items || [];
+
+                              if (moveIndexStr !== '') {
+                                const idx = Number(moveIndexStr);
+                                const item = currentItems[idx];
+                                if (item) {
+                                  const itemW = item.width || 36;
+                                  const rawX = ((e.clientX - rect.left - grabOffsetX) / rect.width) * 100;
+                                  const rawY = ((e.clientY - rect.top - grabOffsetY) / rect.height) * 100;
+                                  const { x: snappedX, y: snappedY } = snapToNeighbors(rawX, rawY, itemW, currentItems, idx);
+                                  item.x = snappedX;
+                                  item.y = snappedY;
+                                  setBlocks(updated);
+                                }
+                              } else if (sourceGridIndexStr !== '') {
+                                const idx = Number(sourceGridIndexStr);
+                                const item = currentItems[idx];
+                                if (item) {
+                                  const itemW = item.width || 36;
+                                  const rawX = ((e.clientX - rect.left - grabOffsetX) / rect.width) * 100;
+                                  const rawY = ((e.clientY - rect.top - grabOffsetY) / rect.height) * 100;
+                                  const { x: snappedX, y: snappedY } = snapToNeighbors(rawX, rawY, itemW, currentItems, idx);
+                                  item.x = snappedX;
+                                  item.y = snappedY;
+                                  setBlocks(updated);
+                                }
+                              } else if (widgetType) {
+                                const rawX = ((e.clientX - rect.left) / rect.width) * 100;
+                                const rawY = ((e.clientY - rect.top) / rect.height) * 100;
+                                const { x: snappedX, y: snappedY } = snapToNeighbors(rawX, rawY, 36, currentItems);
+                                handleDropWidgetOnCanvas(blockIndex, undefined, widgetType, { x: snappedX, y: snappedY });
+                              }
+                              setDraggedCanvasItemIndex(null);
+                            }}
+                            className="w-full relative rounded-3xl border border-white/15 bg-zinc-950/90 bg-[radial-gradient(#ffffff15_1px,transparent_1px)] [background-size:20px_20px] overflow-hidden shadow-2xl transition-all"
+                            id={`freestyle-container-${blockIndex}`}
+                            style={{
+                              minHeight: `${block.content.canvasHeight || 580}px`,
+                            }}
+                          >
+                            {/* Watermark Help Info */}
+                            <div className="absolute top-3 right-3 z-0 pointer-events-none select-none flex items-center gap-2">
+                              <span className="text-[10px] text-emerald-400/90 font-mono bg-black/80 border border-emerald-500/30 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-lg backdrop-blur-md">
+                                <Magnet className="w-3 h-3 text-emerald-400 animate-pulse" />
+                                <span>Ajuste Magnético Activo (Pega widgets juntos sin separación)</span>
+                              </span>
+                            </div>
+
+                            {/* Freestyle Elements */}
+                            {Array.isArray(block.content.items) &&
+                              block.content.items.map((item: CanvasItem, itemIndex: number) => {
+                                const isUploading = uploadingSlotId === `canvas-${blockIndex}-${itemIndex}`;
+                                const itemX = item.x !== undefined ? item.x : Math.min(65, 4 + (itemIndex * 8) % 55);
+                                const itemY = item.y !== undefined ? item.y : Math.min(65, 6 + (itemIndex * 8) % 55);
+                                const itemWidth = item.width || 36;
+                                const itemHeight = item.minHeight || 200;
+                                const itemZ = item.zIndex || itemIndex + 1;
+                                const itemRot = item.rotation || 0;
+                                const isBeingResized = resizingItem?.blockIndex === blockIndex && resizingItem?.itemIndex === itemIndex;
+                                const isPreviewMode = !!canvasPreviewMode[blockIndex];
+
+                                return (
+                                  <div
+                                    key={item.id || itemIndex}
+                                    style={{
+                                      position: 'absolute',
+                                      left: `${itemX}%`,
+                                      top: `${itemY}%`,
+                                      width: `${itemWidth}%`,
+                                      minHeight: `${itemHeight}px`,
+                                      zIndex: itemZ,
+                                      transform: `rotate(${itemRot}deg)`,
+                                    }}
+                                    className={`apple-glass rounded-3xl overflow-hidden shadow-2xl flex flex-col justify-between group/freeitem transition-all duration-75 relative ${
+                                      isPreviewMode && item.type === 'image' ? 'p-0' : 'p-4 sm:p-5'
+                                    } ${
+                                      isBeingResized
+                                        ? 'border-emerald-400 ring-2 ring-emerald-400/40 shadow-emerald-500/20'
+                                        : 'border-white/20 hover:border-emerald-400/70'
+                                    }`}
+                                  >
+                                    {/* Live Dimensions Tooltip Badge */}
+                                    {isBeingResized && (
+                                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-emerald-500 text-black font-extrabold text-[10px] px-3 py-0.5 rounded-full shadow-2xl pointer-events-none z-50 font-mono flex items-center gap-1 animate-pulse border border-white/40">
+                                        <span>📐 {itemWidth}% × {itemHeight}px</span>
                                       </div>
-                                      <span
-                                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider border ${
-                                          item.type === 'image'
-                                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                                            : item.type === 'text'
-                                            ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                                            : item.type === 'card'
-                                            ? 'bg-purple-500/10 text-purple-400 border-purple-500/30'
-                                            : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                                        }`}
-                                      >
-                                        {item.type}
-                                      </span>
+                                    )}
+
+                                    {/* 📐 Live Corner Drag Resize Handle */}
+                                    <div
+                                      onMouseDown={(e) => {
+                                        const container = document.getElementById(`freestyle-container-${blockIndex}`);
+                                        handleStartResize(e, blockIndex, itemIndex, container);
+                                      }}
+                                      className="absolute -bottom-2.5 -right-2.5 w-6 h-6 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center cursor-nwse-resize shadow-2xl z-30 transition-transform hover:scale-125 active:scale-110 select-none border border-white/50 group/handle"
+                                      title="Arrastra esta esquina para cambiar Ancho y Alto en vivo"
+                                    >
+                                      <Maximize2 className="w-3 h-3 rotate-90" />
                                     </div>
 
-                                    {/* Span Controls & Delete */}
-                                    <div className="flex items-center gap-1.5">
-                                      {/* ColSpan Controls */}
-                                      <div className="flex items-center bg-zinc-900 border border-white/10 rounded-lg p-0.5 text-[10px]">
-                                        {[1, 2, 3, 4].map(
-                                          (span) =>
-                                            span <= columnsCount && (
-                                              <button
-                                                key={span}
-                                                type="button"
-                                                onClick={() => {
-                                                  const updated = [...blocks];
-                                                  updated[blockIndex].content.items[itemIndex].colSpan = span;
-                                                  setBlocks(updated);
-                                                }}
-                                                className={`px-1.5 py-0.5 rounded font-mono transition-all cursor-pointer ${
-                                                  effectiveColSpan === span
-                                                    ? 'bg-zinc-700 text-white font-bold'
-                                                    : 'text-zinc-500 hover:text-zinc-300'
-                                                }`}
-                                                title={`Ocupar ${span} columna(s)`}
-                                              >
-                                                {span}c
-                                              </button>
-                                            )
-                                        )}
+                                    {/* Item Drag Handle & Toolbar */}
+                                    <div
+                                      draggable
+                                      onDragStart={(e) => {
+                                        e.dataTransfer.setData('canvasItemMoveIndex', String(itemIndex));
+                                        const cardEl = (e.currentTarget as HTMLElement).closest('.group\\/freeitem') as HTMLElement;
+                                        if (cardEl) {
+                                          const cardRect = cardEl.getBoundingClientRect();
+                                          e.dataTransfer.setData('grabOffsetX', String(e.clientX - cardRect.left));
+                                          e.dataTransfer.setData('grabOffsetY', String(e.clientY - cardRect.top));
+                                        }
+                                        setDraggedCanvasItemIndex({ blockIndex, itemIndex });
+                                      }}
+                                      onDragEnd={() => setDraggedCanvasItemIndex(null)}
+                                      className={`flex items-center justify-between border-b border-white/10 pb-2 mb-3 bg-black/60 -mx-4 -mt-4 sm:-mx-5 sm:-mt-5 p-3 rounded-t-3xl cursor-grab active:cursor-grabbing select-none backdrop-blur-md transition-opacity ${
+                                        isPreviewMode ? 'opacity-30 hover:opacity-100' : 'opacity-100'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-1.5">
+                                        <Move className="w-3.5 h-3.5 text-emerald-400" />
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-white">
+                                          {item.type}
+                                        </span>
+                                        <span className="text-[9px] font-mono text-zinc-400">
+                                          ({itemX}%, {itemY}%)
+                                        </span>
                                       </div>
 
-                                      {/* RowSpan Controls */}
-                                      <div className="flex items-center bg-zinc-900 border border-white/10 rounded-lg p-0.5 text-[10px]">
-                                        {[1, 2].map((rSpan) => (
+                                      <div className="flex items-center gap-1">
+                                        {/* Dock Next to Previous Button (JUNTOS) */}
+                                        {itemIndex > 0 && (
                                           <button
-                                            key={rSpan}
                                             type="button"
-                                            onClick={() => {
-                                              const updated = [...blocks];
-                                              updated[blockIndex].content.items[itemIndex].rowSpan = rSpan;
-                                              setBlocks(updated);
-                                            }}
-                                            className={`px-1.5 py-0.5 rounded font-mono transition-all cursor-pointer ${
-                                              effectiveRowSpan === rSpan
-                                                ? 'bg-zinc-700 text-white font-bold'
-                                                : 'text-zinc-500 hover:text-zinc-300'
-                                            }`}
-                                            title={`Ocupar ${rSpan} fila(s) de alto`}
+                                            onClick={() => handleDockNextToPrevious(blockIndex, itemIndex)}
+                                            className="p-1 rounded-md text-emerald-400 hover:text-white hover:bg-emerald-500/20 cursor-pointer flex items-center gap-0.5 text-[9px] px-1.5 border border-emerald-500/30"
+                                            title="Pegar y acoplar al widget anterior con 0% de separación"
                                           >
-                                            {rSpan}f
+                                            <Link2 className="w-3 h-3" />
+                                            <span className="hidden sm:inline">Pegar</span>
                                           </button>
-                                        ))}
+                                        )}
+
+                                        {/* Layer Z-Index Up / Down */}
+                                        <div className="flex items-center bg-zinc-900 border border-white/10 rounded-md">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleChangeCanvasItemZIndex(blockIndex, itemIndex, 'up')}
+                                            className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+                                            title="Traer al frente (Capa +1)"
+                                          >
+                                            <ArrowUp className="w-3 h-3" />
+                                          </button>
+                                          <span className="text-[9px] font-mono px-1 text-zinc-400">z:{itemZ}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleChangeCanvasItemZIndex(blockIndex, itemIndex, 'down')}
+                                            className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+                                            title="Enviar al fondo (Capa -1)"
+                                          >
+                                            <ArrowDown className="w-3 h-3" />
+                                          </button>
+                                        </div>
+
+                                        {/* Width % Presets */}
+                                        <div className="flex items-center bg-zinc-900 border border-white/10 rounded-md p-0.5 text-[9px]">
+                                          {[25, 36, 50, 75].map((w) => (
+                                            <button
+                                              key={w}
+                                              type="button"
+                                              onClick={() => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].width = w;
+                                                setBlocks(updated);
+                                              }}
+                                              className={`px-1 py-0.5 rounded cursor-pointer ${
+                                                itemWidth === w ? 'bg-zinc-700 text-white font-bold' : 'text-zinc-500 hover:text-zinc-300'
+                                              }`}
+                                              title={`Ancho ${w}%`}
+                                            >
+                                              {w}%
+                                            </button>
+                                          ))}
+                                        </div>
+
+                                        {/* Rotation Preset */}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const updated = [...blocks];
+                                            const nextRot = itemRot === -3 ? 3 : itemRot === 3 ? 0 : -3;
+                                            updated[blockIndex].content.items[itemIndex].rotation = nextRot;
+                                            setBlocks(updated);
+                                          }}
+                                          className={`p-1 rounded-md cursor-pointer transition-colors ${
+                                            itemRot !== 0 ? 'bg-emerald-500/20 text-emerald-400' : 'text-zinc-400 hover:text-white'
+                                          }`}
+                                          title={`Rotación: ${itemRot}° (Clic para alternar)`}
+                                        >
+                                          <RotateCw className="w-3 h-3" />
+                                        </button>
+
+                                        {/* Duplicate */}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDuplicateCanvasItem(blockIndex, itemIndex)}
+                                          className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 cursor-pointer"
+                                          title="Duplicar elemento"
+                                        >
+                                          <Copy className="w-3 h-3" />
+                                        </button>
+
+                                        {/* Delete */}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const updated = [...blocks];
+                                            updated[blockIndex].content.items = updated[blockIndex].content.items.filter(
+                                              (_: any, idx: number) => idx !== itemIndex
+                                            );
+                                            setBlocks(updated);
+                                          }}
+                                          className="p-1 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-500/10 cursor-pointer"
+                                          title="Eliminar elemento"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
                                       </div>
-
-                                      {/* Remove Item */}
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const updated = [...blocks];
-                                          updated[blockIndex].content.items = updated[blockIndex].content.items.filter(
-                                            (_: any, idx: number) => idx !== itemIndex
-                                          );
-                                          setBlocks(updated);
-                                        }}
-                                        className="p-1 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 cursor-pointer transition-all"
-                                        title="Eliminar este espacio reservado"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
                                     </div>
-                                  </div>
 
-                                  {/* Item Body: According to Widget Type */}
-                                  <div className="flex-1 space-y-3">
-                                    {/* 1. IMAGE WIDGET BODY */}
-                                    {item.type === 'image' && (
-                                      <div className="space-y-3">
-                                        <div className="relative aspect-video rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 group/img">
-                                          {item.content.imageUrl ? (
-                                            <img
-                                              src={item.content.imageUrl}
-                                              alt={item.content.title || 'Imagen reservada'}
-                                              className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500"
-                                            />
-                                          ) : (
-                                            <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 p-4 text-center">
-                                              <ImageIcon className="w-6 h-6 mb-1" />
-                                              <span className="text-xs">Espacio de imagen vacío</span>
-                                            </div>
-                                          )}
-
-                                          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
-
-                                          <div className="absolute bottom-3 left-3 right-3 z-10 pointer-events-none">
-                                            {item.content.title && (
-                                              <h5 className="text-sm font-semibold text-white truncate">
-                                                {item.content.title}
-                                              </h5>
+                                    {/* 1:1 WYSIWYG REAL RENDERING VIEW */}
+                                    {isPreviewMode ? (
+                                      <div className="flex-1 flex flex-col justify-between h-full">
+                                        {/* 1. Image Preview */}
+                                        {item.type === 'image' && (
+                                          <div
+                                            className="relative w-full h-full flex flex-col justify-end -mt-3"
+                                            style={{ minHeight: `${itemHeight - 40}px` }}
+                                          >
+                                            {item.content?.imageUrl && (
+                                              <img
+                                                src={item.content.imageUrl}
+                                                alt={item.content.title || 'Imagen'}
+                                                className="absolute inset-0 w-full h-full object-cover"
+                                              />
                                             )}
-                                            {item.content.subtitle && (
-                                              <p className="text-[11px] text-zinc-300 truncate">
-                                                {item.content.subtitle}
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent pointer-events-none" />
+                                            <div className="relative p-5 z-10">
+                                              {item.content?.title && (
+                                                <h3 className="font-semibold text-white tracking-tight text-xl">
+                                                  {item.content.title}
+                                                </h3>
+                                              )}
+                                              {item.content?.subtitle && (
+                                                <p className="text-xs sm:text-sm text-zinc-300 mt-1 font-normal">
+                                                  {item.content.subtitle}
+                                                </p>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* 2. Text Preview */}
+                                        {item.type === 'text' && (
+                                          <div className={`space-y-2.5 my-auto ${item.content?.alignment === 'center' ? 'text-center' : item.content?.alignment === 'right' ? 'text-right' : 'text-left'}`}>
+                                            {item.content?.heading && (
+                                              <h3 className="text-xl sm:text-2xl font-semibold text-white tracking-tight">
+                                                {item.content.heading}
+                                              </h3>
+                                            )}
+                                            {item.content?.bodyText && (
+                                              <p className="text-sm text-zinc-300 leading-relaxed font-normal">
+                                                {item.content.bodyText}
                                               </p>
                                             )}
                                           </div>
+                                        )}
 
-                                          {/* Upload Hover Overlay */}
-                                          <label className="absolute inset-0 bg-black/75 opacity-0 group-hover/img:opacity-100 flex flex-col items-center justify-center text-white text-xs cursor-pointer transition-opacity backdrop-blur-xs">
-                                            <Upload className="w-5 h-5 mb-1 text-emerald-400" />
-                                            <span className="font-medium">
-                                              {isUploading ? 'Subiendo...' : 'Subir imagen a este espacio'}
-                                            </span>
-                                            <span className="text-[10px] text-zinc-400 mt-0.5">
-                                              Guarda en la carpeta del tenant
-                                            </span>
-                                            <input
-                                              type="file"
-                                              accept="image/*"
-                                              disabled={isUploading}
-                                              className="hidden"
-                                              onChange={(e) => {
-                                                const f = e.target.files?.[0];
-                                                if (f) handleUploadCanvasImage(blockIndex, itemIndex, f);
-                                              }}
-                                            />
-                                          </label>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                          <input
-                                            type="text"
-                                            value={item.content.title || ''}
-                                            onChange={(e) => {
-                                              const updated = [...blocks];
-                                              updated[blockIndex].content.items[itemIndex].content.title = e.target.value;
-                                              setBlocks(updated);
-                                            }}
-                                            placeholder="Título sobre la imagen..."
-                                            className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white"
-                                          />
-                                          <input
-                                            type="text"
-                                            value={item.content.subtitle || ''}
-                                            onChange={(e) => {
-                                              const updated = [...blocks];
-                                              updated[blockIndex].content.items[itemIndex].content.subtitle = e.target.value;
-                                              setBlocks(updated);
-                                            }}
-                                            placeholder="Subtítulo..."
-                                            className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white"
-                                          />
-                                        </div>
-
-                                        <input
-                                          type="text"
-                                          value={item.content.imageUrl || ''}
-                                          onChange={(e) => {
-                                            const updated = [...blocks];
-                                            updated[blockIndex].content.items[itemIndex].content.imageUrl = e.target.value;
-                                            setBlocks(updated);
-                                          }}
-                                          placeholder="O pegar URL directa de imagen..."
-                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-mono placeholder-zinc-600"
-                                        />
-                                      </div>
-                                    )}
-
-                                    {/* 2. TEXT WIDGET BODY */}
-                                    {item.type === 'text' && (
-                                      <div className="space-y-2.5">
-                                        <div className="flex items-center justify-between">
-                                          <label className="text-[10px] text-zinc-500 uppercase tracking-wider">
-                                            Encabezado
-                                          </label>
-                                          <div className="flex items-center gap-1 bg-zinc-900 border border-white/10 rounded-lg p-0.5">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                const updated = [...blocks];
-                                                updated[blockIndex].content.items[itemIndex].content.alignment = 'left';
-                                                setBlocks(updated);
-                                              }}
-                                              className={`p-1 rounded cursor-pointer ${
-                                                item.content.alignment === 'left' ? 'bg-zinc-700 text-white' : 'text-zinc-500'
-                                              }`}
-                                            >
-                                              <AlignLeft className="w-3 h-3" />
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                const updated = [...blocks];
-                                                updated[blockIndex].content.items[itemIndex].content.alignment = 'center';
-                                                setBlocks(updated);
-                                              }}
-                                              className={`p-1 rounded cursor-pointer ${
-                                                item.content.alignment === 'center' ? 'bg-zinc-700 text-white' : 'text-zinc-500'
-                                              }`}
-                                            >
-                                              <AlignCenter className="w-3 h-3" />
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                const updated = [...blocks];
-                                                updated[blockIndex].content.items[itemIndex].content.alignment = 'right';
-                                                setBlocks(updated);
-                                              }}
-                                              className={`p-1 rounded cursor-pointer ${
-                                                item.content.alignment === 'right' ? 'bg-zinc-700 text-white' : 'text-zinc-500'
-                                              }`}
-                                            >
-                                              <AlignRight className="w-3 h-3" />
-                                            </button>
+                                        {/* 3. Card Preview */}
+                                        {item.type === 'card' && (
+                                          <div className="space-y-2.5 my-auto">
+                                            <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center mb-2">
+                                              <Sparkles className="w-4 h-4" />
+                                            </div>
+                                            {item.content?.cardTitle && (
+                                              <h3 className="text-lg sm:text-xl font-semibold text-white tracking-tight">
+                                                {item.content.cardTitle}
+                                              </h3>
+                                            )}
+                                            {item.content?.cardDescription && (
+                                              <p className="text-sm text-zinc-300 leading-relaxed font-normal">
+                                                {item.content.cardDescription}
+                                              </p>
+                                            )}
                                           </div>
-                                        </div>
+                                        )}
 
-                                        <input
-                                          type="text"
-                                          value={item.content.heading || ''}
-                                          onChange={(e) => {
-                                            const updated = [...blocks];
-                                            updated[blockIndex].content.items[itemIndex].content.heading = e.target.value;
-                                            setBlocks(updated);
-                                          }}
-                                          placeholder="Título del bloque de texto..."
-                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-semibold"
-                                        />
-
-                                        <textarea
-                                          value={item.content.bodyText || ''}
-                                          onChange={(e) => {
-                                            const updated = [...blocks];
-                                            updated[blockIndex].content.items[itemIndex].content.bodyText = e.target.value;
-                                            setBlocks(updated);
-                                          }}
-                                          rows={3}
-                                          placeholder="Escribe aquí el contenido o párrafo..."
-                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white resize-none"
-                                        />
+                                        {/* 4. Button Preview */}
+                                        {item.type === 'button' && (
+                                          <div className="flex items-center justify-center h-full my-auto py-2">
+                                            <span className="apple-button-primary text-sm font-medium px-6 py-2.5 rounded-full inline-flex items-center gap-2 shadow-lg">
+                                              <span>{item.content?.buttonText || 'Conocer Más'}</span>
+                                              <ArrowRight className="w-4 h-4" />
+                                            </span>
+                                          </div>
+                                        )}
                                       </div>
-                                    )}
+                                    ) : (
+                                      /* STANDARD EDITABLE FORM BODY */
+                                      <div className="space-y-3">
+                                        {/* 1. Image */}
+                                        {item.type === 'image' && (
+                                          <div className="space-y-2.5">
+                                            <div className="relative aspect-video rounded-xl overflow-hidden bg-zinc-900 border border-white/10 group/img">
+                                              {item.content.imageUrl ? (
+                                                <img
+                                                  src={item.content.imageUrl}
+                                                  alt={item.content.title || 'Imagen libre'}
+                                                  className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500"
+                                                />
+                                              ) : (
+                                                <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 p-2 text-center">
+                                                  <ImageIcon className="w-5 h-5 mb-1" />
+                                                  <span className="text-[11px]">Sin imagen</span>
+                                                </div>
+                                              )}
+                                              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+                                              <div className="absolute bottom-2 left-2 right-2 z-10 pointer-events-none">
+                                                {item.content.title && (
+                                                  <h5 className="text-xs font-semibold text-white truncate">{item.content.title}</h5>
+                                                )}
+                                              </div>
+                                              <label className="absolute inset-0 bg-black/75 opacity-0 group-hover/img:opacity-100 flex flex-col items-center justify-center text-white text-xs cursor-pointer transition-opacity">
+                                                <Upload className="w-4 h-4 mb-1 text-emerald-400" />
+                                                <span>{isUploading ? 'Subiendo...' : 'Subir imagen'}</span>
+                                                <input
+                                                  type="file"
+                                                  accept="image/*"
+                                                  disabled={isUploading}
+                                                  className="hidden"
+                                                  onChange={(e) => {
+                                                    const f = e.target.files?.[0];
+                                                    if (f) handleUploadCanvasImage(blockIndex, itemIndex, f);
+                                                  }}
+                                                />
+                                              </label>
+                                            </div>
 
-                                    {/* 3. CARD WIDGET BODY */}
-                                    {item.type === 'card' && (
-                                      <div className="space-y-2.5">
-                                        <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center mb-1">
-                                          <Square className="w-4 h-4" />
-                                        </div>
-                                        <input
-                                          type="text"
-                                          value={item.content.cardTitle || ''}
-                                          onChange={(e) => {
-                                            const updated = [...blocks];
-                                            updated[blockIndex].content.items[itemIndex].content.cardTitle = e.target.value;
-                                            setBlocks(updated);
-                                          }}
-                                          placeholder="Título de la tarjeta..."
-                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-semibold"
-                                        />
-                                        <textarea
-                                          value={item.content.cardDescription || ''}
-                                          onChange={(e) => {
-                                            const updated = [...blocks];
-                                            updated[blockIndex].content.items[itemIndex].content.cardDescription = e.target.value;
-                                            setBlocks(updated);
-                                          }}
-                                          rows={2}
-                                          placeholder="Descripción de la tarjeta..."
-                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white resize-none"
-                                        />
-                                      </div>
-                                    )}
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                              <input
+                                                type="text"
+                                                value={item.content.title || ''}
+                                                onChange={(e) => {
+                                                  const updated = [...blocks];
+                                                  updated[blockIndex].content.items[itemIndex].content.title = e.target.value;
+                                                  setBlocks(updated);
+                                                }}
+                                                placeholder="Título..."
+                                                className="apple-input w-full rounded-xl px-2 py-1 text-xs text-white"
+                                              />
+                                              <input
+                                                type="text"
+                                                value={item.content.subtitle || ''}
+                                                onChange={(e) => {
+                                                  const updated = [...blocks];
+                                                  updated[blockIndex].content.items[itemIndex].content.subtitle = e.target.value;
+                                                  setBlocks(updated);
+                                                }}
+                                                placeholder="Subtítulo..."
+                                                className="apple-input w-full rounded-xl px-2 py-1 text-xs text-white"
+                                              />
+                                            </div>
+                                            <input
+                                              type="text"
+                                              value={item.content.imageUrl || ''}
+                                              onChange={(e) => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].content.imageUrl = e.target.value;
+                                                setBlocks(updated);
+                                              }}
+                                              placeholder="O URL de imagen..."
+                                              className="apple-input w-full rounded-xl px-2 py-1 text-xs text-white font-mono placeholder-zinc-600"
+                                            />
+                                          </div>
+                                        )}
 
-                                    {/* 4. BUTTON WIDGET BODY */}
-                                    {item.type === 'button' && (
-                                      <div className="space-y-2.5">
-                                        <input
-                                          type="text"
-                                          value={item.content.buttonText || ''}
-                                          onChange={(e) => {
-                                            const updated = [...blocks];
-                                            updated[blockIndex].content.items[itemIndex].content.buttonText = e.target.value;
-                                            setBlocks(updated);
-                                          }}
-                                          placeholder="Texto del botón..."
-                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-medium"
-                                        />
-                                        <input
-                                          type="text"
-                                          value={item.content.buttonUrl || ''}
-                                          onChange={(e) => {
-                                            const updated = [...blocks];
-                                            updated[blockIndex].content.items[itemIndex].content.buttonUrl = e.target.value;
-                                            setBlocks(updated);
-                                          }}
-                                          placeholder="URL de enlace (ej. https://... o #seccion)"
-                                          className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-mono placeholder-zinc-600"
-                                        />
+                                        {/* 2. Text */}
+                                        {item.type === 'text' && (
+                                          <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                              <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Texto</label>
+                                              <div className="flex items-center gap-0.5 bg-zinc-900 border border-white/10 rounded-md p-0.5">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const updated = [...blocks];
+                                                    updated[blockIndex].content.items[itemIndex].content.alignment = 'left';
+                                                    setBlocks(updated);
+                                                  }}
+                                                  className={`p-1 rounded cursor-pointer ${
+                                                    item.content.alignment === 'left' ? 'bg-zinc-700 text-white' : 'text-zinc-500'
+                                                  }`}
+                                                >
+                                                  <AlignLeft className="w-2.5 h-2.5" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const updated = [...blocks];
+                                                    updated[blockIndex].content.items[itemIndex].content.alignment = 'center';
+                                                    setBlocks(updated);
+                                                  }}
+                                                  className={`p-1 rounded cursor-pointer ${
+                                                    item.content.alignment === 'center' ? 'bg-zinc-700 text-white' : 'text-zinc-500'
+                                                  }`}
+                                                >
+                                                  <AlignCenter className="w-2.5 h-2.5" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const updated = [...blocks];
+                                                    updated[blockIndex].content.items[itemIndex].content.alignment = 'right';
+                                                    setBlocks(updated);
+                                                  }}
+                                                  className={`p-1 rounded cursor-pointer ${
+                                                    item.content.alignment === 'right' ? 'bg-zinc-700 text-white' : 'text-zinc-500'
+                                                  }`}
+                                                >
+                                                  <AlignRight className="w-2.5 h-2.5" />
+                                                </button>
+                                              </div>
+                                            </div>
+                                            <input
+                                              type="text"
+                                              value={item.content.heading || ''}
+                                              onChange={(e) => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].content.heading = e.target.value;
+                                                setBlocks(updated);
+                                              }}
+                                              placeholder="Título..."
+                                              className="apple-input w-full rounded-xl px-2.5 py-1 text-xs text-white font-semibold"
+                                            />
+                                            <textarea
+                                              value={item.content.bodyText || ''}
+                                              onChange={(e) => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].content.bodyText = e.target.value;
+                                                setBlocks(updated);
+                                              }}
+                                              rows={2}
+                                              placeholder="Párrafo libre..."
+                                              className="apple-input w-full rounded-xl px-2.5 py-1 text-xs text-white resize-none"
+                                            />
+                                          </div>
+                                        )}
+
+                                        {/* 3. Card */}
+                                        {item.type === 'card' && (
+                                          <div className="space-y-2">
+                                            <div className="w-7 h-7 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                                              <Square className="w-3.5 h-3.5" />
+                                            </div>
+                                            <input
+                                              type="text"
+                                              value={item.content.cardTitle || ''}
+                                              onChange={(e) => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].content.cardTitle = e.target.value;
+                                                setBlocks(updated);
+                                              }}
+                                              placeholder="Título tarjeta..."
+                                              className="apple-input w-full rounded-xl px-2.5 py-1 text-xs text-white font-semibold"
+                                            />
+                                            <textarea
+                                              value={item.content.cardDescription || ''}
+                                              onChange={(e) => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].content.cardDescription = e.target.value;
+                                                setBlocks(updated);
+                                              }}
+                                              rows={2}
+                                              placeholder="Descripción..."
+                                              className="apple-input w-full rounded-xl px-2.5 py-1 text-xs text-white resize-none"
+                                            />
+                                          </div>
+                                        )}
+
+                                        {/* 4. Button */}
+                                        {item.type === 'button' && (
+                                          <div className="space-y-2">
+                                            <input
+                                              type="text"
+                                              value={item.content.buttonText || ''}
+                                              onChange={(e) => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].content.buttonText = e.target.value;
+                                                setBlocks(updated);
+                                              }}
+                                              placeholder="Texto botón..."
+                                              className="apple-input w-full rounded-xl px-2.5 py-1 text-xs text-white font-medium"
+                                            />
+                                            <input
+                                              type="text"
+                                              value={item.content.buttonUrl || ''}
+                                              onChange={(e) => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].content.buttonUrl = e.target.value;
+                                                setBlocks(updated);
+                                              }}
+                                              placeholder="https://... o #enlace"
+                                              className="apple-input w-full rounded-xl px-2.5 py-1 text-xs text-white font-mono placeholder-zinc-600"
+                                            />
+                                          </div>
+                                        )}
                                       </div>
                                     )}
                                   </div>
-                                </div>
-                              );
-                            })}
-
-                          {/* End Dropzone / Add Slot Area */}
+                                );
+                              })}
+                          </div>
+                        ) : (
+                          /* 3B. MAGNETIC GRID CANVAS VIEW (MODO CUADRÍCULA BENTO) */
                           <div
                             onDragOver={(e) => e.preventDefault()}
                             onDrop={(e) => {
@@ -2107,50 +2604,434 @@ export const ProjectEditor: React.FC = () => {
                               const wType = e.dataTransfer.getData('canvasWidgetType') as CanvasItem['type'];
                               if (wType) handleDropWidgetOnCanvas(blockIndex, undefined, wType);
                             }}
-                            className="border-2 border-dashed border-white/20 hover:border-emerald-400/80 rounded-3xl p-6 flex flex-col items-center justify-center text-center transition-all bg-black/20 hover:bg-emerald-950/20 min-h-[180px] group"
+                            className="grid w-full transition-all duration-300"
+                            style={{
+                              gridTemplateColumns: `repeat(${block.content.columns || 3}, minmax(0, 1fr))`,
+                              gap: `${block.content.gap || 16}px`,
+                            }}
                           >
-                            <div className="w-10 h-10 rounded-2xl bg-white/[0.06] border border-white/10 group-hover:bg-emerald-500/20 group-hover:border-emerald-400/30 flex items-center justify-center text-zinc-400 group-hover:text-emerald-400 mb-2.5 transition-all">
-                              <Plus className="w-5 h-5" />
-                            </div>
-                            <span className="text-xs font-medium text-zinc-300 group-hover:text-white">
-                              Soltar elemento aquí para reservar espacio
-                            </span>
-                            <span className="text-[11px] text-zinc-500 mt-0.5 mb-3">
-                              O haz clic en cualquiera de los accesos directos:
-                            </span>
+                            {Array.isArray(block.content.items) &&
+                              block.content.items.map((item: CanvasItem, itemIndex: number) => {
+                                const columnsCount = block.content.columns || 3;
+                                const effectiveColSpan = Math.min(item.colSpan || 1, columnsCount);
+                                const effectiveRowSpan = item.rowSpan || 1;
+                                const isUploading = uploadingSlotId === `canvas-${blockIndex}-${itemIndex}`;
 
-                            <div className="flex flex-wrap items-center justify-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'image')}
-                                className="text-[11px] bg-white/[0.06] hover:bg-emerald-600/30 text-zinc-300 hover:text-emerald-300 border border-white/10 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                              >
-                                + Imagen
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'text')}
-                                className="text-[11px] bg-white/[0.06] hover:bg-blue-600/30 text-zinc-300 hover:text-blue-300 border border-white/10 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                              >
-                                + Texto
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'card')}
-                                className="text-[11px] bg-white/[0.06] hover:bg-purple-600/30 text-zinc-300 hover:text-purple-300 border border-white/10 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                              >
-                                + Tarjeta
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'button')}
-                                className="text-[11px] bg-white/[0.06] hover:bg-amber-600/30 text-zinc-300 hover:text-amber-300 border border-white/10 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                              >
-                                + Botón
-                              </button>
+                                return (
+                                  <div
+                                    key={item.id || itemIndex}
+                                    draggable
+                                    onDragStart={(e) => {
+                                      e.dataTransfer.setData('canvasItemIndex', String(itemIndex));
+                                      setDraggedCanvasItemIndex({ blockIndex, itemIndex });
+                                    }}
+                                    onDragOver={(e) => e.preventDefault()}
+                                    onDrop={(e) => {
+                                      e.preventDefault();
+                                      const sourceIndexStr = e.dataTransfer.getData('canvasItemIndex');
+                                      if (sourceIndexStr !== '') {
+                                        handleReorderCanvasItems(blockIndex, Number(sourceIndexStr), itemIndex);
+                                      } else {
+                                        const wType = e.dataTransfer.getData('canvasWidgetType') as CanvasItem['type'];
+                                        if (wType) handleDropWidgetOnCanvas(blockIndex, itemIndex, wType);
+                                      }
+                                    }}
+                                    onDragEnd={() => setDraggedCanvasItemIndex(null)}
+                                    className={`apple-glass rounded-3xl p-5 border transition-all duration-200 flex flex-col justify-between relative group/item shadow-xl ${
+                                      draggedCanvasItemIndex?.blockIndex === blockIndex && draggedCanvasItemIndex?.itemIndex === itemIndex
+                                        ? 'opacity-40 border-dashed border-emerald-400 scale-95'
+                                        : 'border-white/15 hover:border-emerald-400/50'
+                                    }`}
+                                    style={{
+                                      gridColumn: `span ${effectiveColSpan}`,
+                                      gridRow: `span ${effectiveRowSpan}`,
+                                      minHeight: effectiveRowSpan > 1 ? '380px' : '200px',
+                                    }}
+                                  >
+                                    {/* Item Header Toolbar */}
+                                    <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-4">
+                                      <div className="flex items-center gap-2">
+                                        <div className="cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-white">
+                                          <GripVertical className="w-3.5 h-3.5" />
+                                        </div>
+                                        <span
+                                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider border ${
+                                            item.type === 'image'
+                                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                              : item.type === 'text'
+                                              ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                                              : item.type === 'card'
+                                              ? 'bg-purple-500/10 text-purple-400 border-purple-500/30'
+                                              : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                                          }`}
+                                        >
+                                          {item.type}
+                                        </span>
+                                      </div>
+
+                                      {/* Span Controls, Duplicate & Delete */}
+                                      <div className="flex items-center gap-1.5">
+                                        {/* ColSpan Controls */}
+                                        <div className="flex items-center bg-zinc-900 border border-white/10 rounded-lg p-0.5 text-[10px]">
+                                          {[1, 2, 3, 4].map(
+                                            (span) =>
+                                              span <= columnsCount && (
+                                                <button
+                                                  key={span}
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const updated = [...blocks];
+                                                    updated[blockIndex].content.items[itemIndex].colSpan = span;
+                                                    setBlocks(updated);
+                                                  }}
+                                                  className={`px-1.5 py-0.5 rounded font-mono transition-all cursor-pointer ${
+                                                    effectiveColSpan === span
+                                                      ? 'bg-zinc-700 text-white font-bold'
+                                                      : 'text-zinc-500 hover:text-zinc-300'
+                                                  }`}
+                                                  title={`Ocupar ${span} columna(s)`}
+                                                >
+                                                  {span}c
+                                                </button>
+                                              )
+                                          )}
+                                        </div>
+
+                                        {/* RowSpan Controls */}
+                                        <div className="flex items-center bg-zinc-900 border border-white/10 rounded-lg p-0.5 text-[10px]">
+                                          {[1, 2].map((rSpan) => (
+                                            <button
+                                              key={rSpan}
+                                              type="button"
+                                              onClick={() => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].rowSpan = rSpan;
+                                                setBlocks(updated);
+                                              }}
+                                              className={`px-1.5 py-0.5 rounded font-mono transition-all cursor-pointer ${
+                                                effectiveRowSpan === rSpan
+                                                  ? 'bg-zinc-700 text-white font-bold'
+                                                  : 'text-zinc-500 hover:text-zinc-300'
+                                              }`}
+                                              title={`Ocupar ${rSpan} fila(s) de alto`}
+                                            >
+                                              {rSpan}f
+                                            </button>
+                                          ))}
+                                        </div>
+
+                                        {/* Duplicate */}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDuplicateCanvasItem(blockIndex, itemIndex)}
+                                          className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 cursor-pointer transition-all"
+                                          title="Duplicar"
+                                        >
+                                          <Copy className="w-3.5 h-3.5" />
+                                        </button>
+
+                                        {/* Remove Item */}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const updated = [...blocks];
+                                            updated[blockIndex].content.items = updated[blockIndex].content.items.filter(
+                                              (_: any, idx: number) => idx !== itemIndex
+                                            );
+                                            setBlocks(updated);
+                                          }}
+                                          className="p-1 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 cursor-pointer transition-all"
+                                          title="Eliminar este espacio"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Item Body: According to Widget Type */}
+                                    <div className="flex-1 space-y-3">
+                                      {/* 1. IMAGE WIDGET BODY */}
+                                      {item.type === 'image' && (
+                                        <div className="space-y-3">
+                                          <div className="relative aspect-video rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 group/img">
+                                            {item.content.imageUrl ? (
+                                              <img
+                                                src={item.content.imageUrl}
+                                                alt={item.content.title || 'Imagen reservada'}
+                                                className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500"
+                                              />
+                                            ) : (
+                                              <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 p-4 text-center">
+                                                <ImageIcon className="w-6 h-6 mb-1" />
+                                                <span className="text-xs">Espacio de imagen vacío</span>
+                                              </div>
+                                            )}
+
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+
+                                            <div className="absolute bottom-3 left-3 right-3 z-10 pointer-events-none">
+                                              {item.content.title && (
+                                                <h5 className="text-sm font-semibold text-white truncate">
+                                                  {item.content.title}
+                                                </h5>
+                                              )}
+                                              {item.content.subtitle && (
+                                                <p className="text-[11px] text-zinc-300 truncate">
+                                                  {item.content.subtitle}
+                                                </p>
+                                              )}
+                                            </div>
+
+                                            {/* Upload Hover Overlay */}
+                                            <label className="absolute inset-0 bg-black/75 opacity-0 group-hover/img:opacity-100 flex flex-col items-center justify-center text-white text-xs cursor-pointer transition-opacity backdrop-blur-xs">
+                                              <Upload className="w-5 h-5 mb-1 text-emerald-400" />
+                                              <span className="font-medium">
+                                                {isUploading ? 'Subiendo...' : 'Subir imagen'}
+                                              </span>
+                                              <input
+                                                type="file"
+                                                accept="image/*"
+                                                disabled={isUploading}
+                                                className="hidden"
+                                                onChange={(e) => {
+                                                  const f = e.target.files?.[0];
+                                                  if (f) handleUploadCanvasImage(blockIndex, itemIndex, f);
+                                                }}
+                                              />
+                                            </label>
+                                          </div>
+
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <input
+                                              type="text"
+                                              value={item.content.title || ''}
+                                              onChange={(e) => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].content.title = e.target.value;
+                                                setBlocks(updated);
+                                              }}
+                                              placeholder="Título..."
+                                              className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white"
+                                            />
+                                            <input
+                                              type="text"
+                                              value={item.content.subtitle || ''}
+                                              onChange={(e) => {
+                                                const updated = [...blocks];
+                                                updated[blockIndex].content.items[itemIndex].content.subtitle = e.target.value;
+                                                setBlocks(updated);
+                                              }}
+                                              placeholder="Subtítulo..."
+                                              className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white"
+                                            />
+                                          </div>
+
+                                          <input
+                                            type="text"
+                                            value={item.content.imageUrl || ''}
+                                            onChange={(e) => {
+                                              const updated = [...blocks];
+                                              updated[blockIndex].content.items[itemIndex].content.imageUrl = e.target.value;
+                                              setBlocks(updated);
+                                            }}
+                                            placeholder="O pegar URL directa de imagen..."
+                                            className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-mono placeholder-zinc-600"
+                                          />
+                                        </div>
+                                      )}
+
+                                      {/* 2. TEXT WIDGET BODY */}
+                                      {item.type === 'text' && (
+                                        <div className="space-y-2.5">
+                                          <div className="flex items-center justify-between">
+                                            <label className="text-[10px] text-zinc-500 uppercase tracking-wider">
+                                              Encabezado
+                                            </label>
+                                            <div className="flex items-center gap-1 bg-zinc-900 border border-white/10 rounded-lg p-0.5">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const updated = [...blocks];
+                                                  updated[blockIndex].content.items[itemIndex].content.alignment = 'left';
+                                                  setBlocks(updated);
+                                                }}
+                                                className={`p-1 rounded cursor-pointer ${
+                                                  item.content.alignment === 'left' ? 'bg-zinc-700 text-white' : 'text-zinc-500'
+                                                }`}
+                                              >
+                                                <AlignLeft className="w-3 h-3" />
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const updated = [...blocks];
+                                                  updated[blockIndex].content.items[itemIndex].content.alignment = 'center';
+                                                  setBlocks(updated);
+                                                }}
+                                                className={`p-1 rounded cursor-pointer ${
+                                                  item.content.alignment === 'center' ? 'bg-zinc-700 text-white' : 'text-zinc-500'
+                                                }`}
+                                              >
+                                                <AlignCenter className="w-3 h-3" />
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const updated = [...blocks];
+                                                  updated[blockIndex].content.items[itemIndex].content.alignment = 'right';
+                                                  setBlocks(updated);
+                                                }}
+                                                className={`p-1 rounded cursor-pointer ${
+                                                  item.content.alignment === 'right' ? 'bg-zinc-700 text-white' : 'text-zinc-500'
+                                                }`}
+                                              >
+                                                <AlignRight className="w-3 h-3" />
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          <input
+                                            type="text"
+                                            value={item.content.heading || ''}
+                                            onChange={(e) => {
+                                              const updated = [...blocks];
+                                              updated[blockIndex].content.items[itemIndex].content.heading = e.target.value;
+                                              setBlocks(updated);
+                                            }}
+                                            placeholder="Título del bloque de texto..."
+                                            className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-semibold"
+                                          />
+
+                                          <textarea
+                                            value={item.content.bodyText || ''}
+                                            onChange={(e) => {
+                                              const updated = [...blocks];
+                                              updated[blockIndex].content.items[itemIndex].content.bodyText = e.target.value;
+                                              setBlocks(updated);
+                                            }}
+                                            rows={3}
+                                            placeholder="Escribe aquí el contenido o párrafo..."
+                                            className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white resize-none"
+                                          />
+                                        </div>
+                                      )}
+
+                                      {/* 3. CARD WIDGET BODY */}
+                                      {item.type === 'card' && (
+                                        <div className="space-y-2.5">
+                                          <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center mb-1">
+                                            <Square className="w-4 h-4" />
+                                          </div>
+                                          <input
+                                            type="text"
+                                            value={item.content.cardTitle || ''}
+                                            onChange={(e) => {
+                                              const updated = [...blocks];
+                                              updated[blockIndex].content.items[itemIndex].content.cardTitle = e.target.value;
+                                              setBlocks(updated);
+                                            }}
+                                            placeholder="Título de la tarjeta..."
+                                            className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-semibold"
+                                          />
+                                          <textarea
+                                            value={item.content.cardDescription || ''}
+                                            onChange={(e) => {
+                                              const updated = [...blocks];
+                                              updated[blockIndex].content.items[itemIndex].content.cardDescription = e.target.value;
+                                              setBlocks(updated);
+                                            }}
+                                            rows={2}
+                                            placeholder="Descripción de la tarjeta..."
+                                            className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white resize-none"
+                                          />
+                                        </div>
+                                      )}
+
+                                      {/* 4. BUTTON WIDGET BODY */}
+                                      {item.type === 'button' && (
+                                        <div className="space-y-2.5">
+                                          <input
+                                            type="text"
+                                            value={item.content.buttonText || ''}
+                                            onChange={(e) => {
+                                              const updated = [...blocks];
+                                              updated[blockIndex].content.items[itemIndex].content.buttonText = e.target.value;
+                                              setBlocks(updated);
+                                            }}
+                                            placeholder="Texto del botón..."
+                                            className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-medium"
+                                          />
+                                          <input
+                                            type="text"
+                                            value={item.content.buttonUrl || ''}
+                                            onChange={(e) => {
+                                              const updated = [...blocks];
+                                              updated[blockIndex].content.items[itemIndex].content.buttonUrl = e.target.value;
+                                              setBlocks(updated);
+                                            }}
+                                            placeholder="URL de enlace (ej. https://... o #seccion)"
+                                            className="apple-input w-full rounded-xl px-2.5 py-1.5 text-xs text-white font-mono placeholder-zinc-600"
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+
+                            {/* End Dropzone / Add Slot Area in Grid Mode */}
+                            <div
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                const wType = e.dataTransfer.getData('canvasWidgetType') as CanvasItem['type'];
+                                if (wType) handleDropWidgetOnCanvas(blockIndex, undefined, wType);
+                              }}
+                              className="border-2 border-dashed border-white/20 hover:border-emerald-400/80 rounded-3xl p-6 flex flex-col items-center justify-center text-center transition-all bg-black/20 hover:bg-emerald-950/20 min-h-[180px] group"
+                            >
+                              <div className="w-10 h-10 rounded-2xl bg-white/[0.06] border border-white/10 group-hover:bg-emerald-500/20 group-hover:border-emerald-400/30 flex items-center justify-center text-zinc-400 group-hover:text-emerald-400 mb-2.5 transition-all">
+                                <Plus className="w-5 h-5" />
+                              </div>
+                              <span className="text-xs font-medium text-zinc-300 group-hover:text-white">
+                                Soltar elemento aquí para reservar espacio
+                              </span>
+                              <span className="text-[11px] text-zinc-500 mt-0.5 mb-3">
+                                O haz clic en cualquiera de los accesos directos:
+                              </span>
+
+                              <div className="flex flex-wrap items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'image')}
+                                  className="text-[11px] bg-white/[0.06] hover:bg-emerald-600/30 text-zinc-300 hover:text-emerald-300 border border-white/10 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                                >
+                                  + Imagen
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'text')}
+                                  className="text-[11px] bg-white/[0.06] hover:bg-blue-600/30 text-zinc-300 hover:text-blue-300 border border-white/10 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                                >
+                                  + Texto
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'card')}
+                                  className="text-[11px] bg-white/[0.06] hover:bg-purple-600/30 text-zinc-300 hover:text-purple-300 border border-white/10 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                                >
+                                  + Tarjeta
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDropWidgetOnCanvas(blockIndex, undefined, 'button')}
+                                  className="text-[11px] bg-white/[0.06] hover:bg-amber-600/30 text-zinc-300 hover:text-amber-300 border border-white/10 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                                >
+                                  + Botón
+                                </button>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     )}
 
