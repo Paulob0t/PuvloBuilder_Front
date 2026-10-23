@@ -38,6 +38,8 @@ import {
   ArrowDown,
   Magnet,
   Link2,
+  Wrench,
+  Ruler,
 } from 'lucide-react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -1809,7 +1811,7 @@ export const ProjectEditor: React.FC = () => {
                                   }`}
                                 >
                                   <Sparkles className="w-3.5 h-3.5" />
-                                  <span>🎨 Modo Libre (Freestyle)</span>
+                                  <span>Modo Libre (Freestyle)</span>
                                 </button>
                                 <button
                                   type="button"
@@ -1825,7 +1827,7 @@ export const ProjectEditor: React.FC = () => {
                                   }`}
                                 >
                                   <LayoutGrid className="w-3.5 h-3.5" />
-                                  <span>⊞ Cuadrícula Magnética</span>
+                                  <span>Cuadrícula Magnética</span>
                                 </button>
                               </div>
                             </div>
@@ -1870,20 +1872,21 @@ export const ProjectEditor: React.FC = () => {
                                       onClick={() => {
                                         setCanvasPreviewMode((prev) => ({ ...prev, [blockIndex]: false }));
                                       }}
-                                      className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1 ${
+                                      className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
                                         !canvasPreviewMode[blockIndex]
                                           ? 'bg-zinc-700 text-white font-semibold'
                                           : 'text-zinc-400 hover:text-white'
                                       }`}
                                     >
-                                      <span>🛠️ Editor</span>
+                                      <Wrench className="w-3 h-3 text-zinc-300" />
+                                      <span>Editor</span>
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => {
                                         setCanvasPreviewMode((prev) => ({ ...prev, [blockIndex]: true }));
                                       }}
-                                      className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1 ${
+                                      className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
                                         canvasPreviewMode[blockIndex]
                                           ? 'bg-emerald-600 text-white font-semibold shadow-xs'
                                           : 'text-zinc-400 hover:text-white'
@@ -1891,7 +1894,7 @@ export const ProjectEditor: React.FC = () => {
                                       title="Ver exactamente cómo se verá publicado con 100% de precisión visual"
                                     >
                                       <Eye className="w-3 h-3" />
-                                      <span>👁️ Vista Previa 1:1</span>
+                                      <span>Vista Previa 1:1</span>
                                     </button>
                                   </div>
                                 </div>
@@ -1971,8 +1974,8 @@ export const ProjectEditor: React.FC = () => {
                             </div>
                             <span className="text-[11px] text-zinc-400 hidden sm:inline">
                               {(block.content.mode || 'freestyle') === 'freestyle'
-                                ? '🎨 Suelta en cualquier posición X, Y'
-                                : '⊞ Se acomodará en la cuadrícula'}
+                                ? 'Suelta en cualquier posición X, Y'
+                                : 'Se acomodará en la cuadrícula'}
                             </span>
                           </div>
 
@@ -1992,7 +1995,7 @@ export const ProjectEditor: React.FC = () => {
                                 <ImageIcon className="w-4 h-4" />
                               </div>
                               <div>
-                                <span className="text-xs font-medium text-white block">🖼️ Imagen</span>
+                                <span className="text-xs font-medium text-white block">Imagen</span>
                                 <span className="text-[10px] text-zinc-400 block">Foto / Banner</span>
                               </div>
                             </div>
@@ -2012,7 +2015,7 @@ export const ProjectEditor: React.FC = () => {
                                 <TypeIcon className="w-4 h-4" />
                               </div>
                               <div>
-                                <span className="text-xs font-medium text-white block">✍️ Texto</span>
+                                <span className="text-xs font-medium text-white block">Texto</span>
                                 <span className="text-[10px] text-zinc-400 block">Título y contenido</span>
                               </div>
                             </div>
@@ -2032,7 +2035,7 @@ export const ProjectEditor: React.FC = () => {
                                 <Square className="w-4 h-4" />
                               </div>
                               <div>
-                                <span className="text-xs font-medium text-white block">🔲 Tarjeta</span>
+                                <span className="text-xs font-medium text-white block">Tarjeta</span>
                                 <span className="text-[10px] text-zinc-400 block">Módulo Glass</span>
                               </div>
                             </div>
@@ -2052,7 +2055,7 @@ export const ProjectEditor: React.FC = () => {
                                 <ArrowRight className="w-4 h-4" />
                               </div>
                               <div>
-                                <span className="text-xs font-medium text-white block">🔘 Botón</span>
+                                <span className="text-xs font-medium text-white block">Botón</span>
                                 <span className="text-[10px] text-zinc-400 block">Acción con enlace</span>
                               </div>
                             </div>
@@ -2157,12 +2160,13 @@ export const ProjectEditor: React.FC = () => {
                                   >
                                     {/* Live Dimensions Tooltip Badge */}
                                     {isBeingResized && (
-                                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-emerald-500 text-black font-extrabold text-[10px] px-3 py-0.5 rounded-full shadow-2xl pointer-events-none z-50 font-mono flex items-center gap-1 animate-pulse border border-white/40">
-                                        <span>📐 {itemWidth}% × {itemHeight}px</span>
+                                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-emerald-500 text-black font-extrabold text-[10px] px-3 py-0.5 rounded-full shadow-2xl pointer-events-none z-50 font-mono flex items-center gap-1.5 animate-pulse border border-white/40">
+                                        <Ruler className="w-3 h-3 text-black" />
+                                        <span>{itemWidth}% × {itemHeight}px</span>
                                       </div>
                                     )}
 
-                                    {/* 📐 Live Corner Drag Resize Handle */}
+                                    {/* Live Corner Drag Resize Handle */}
                                     <div
                                       onMouseDown={(e) => {
                                         const container = document.getElementById(`freestyle-container-${blockIndex}`);
