@@ -191,6 +191,14 @@ export const SuperAdminDashboard: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              to="/admin/clientes"
+              className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all font-medium"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Gestión de Clientes</span>
+            </Link>
+
             <div className="text-right hidden sm:block">
               <div className="text-[13px] font-medium text-white">{superAdmin?.name}</div>
               <div className="text-[11px] text-[#86868b]">{superAdmin?.email}</div>
